@@ -1,0 +1,210 @@
+@import "tailwindcss";
+
+body {
+    background-color: rgb(0, 0, 0);
+    /* Custom default cursor (dot) */
+    cursor: url('/icons/cursors/cursor-dot.svg') 4 4, auto;
+}
+
+::selection {
+    background: #ac7fff;
+    color: #000000;
+}
+
+@theme {
+    --breakpoint-3xl: 150rem;
+}
+
+@keyframes wave {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    10% {
+        transform: rotate(12deg);
+    }
+
+    20% {
+        transform: rotate(-8deg);
+    }
+
+    30% {
+        transform: rotate(12deg);
+    }
+
+    40% {
+        transform: rotate(-4deg);
+    }
+
+    50% {
+        transform: rotate(10deg);
+    }
+
+    60% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(0deg);
+    }
+}
+
+.wave-emoji {
+    display: inline-block;
+    animation: wave 2s infinite;
+    transform-origin: 70% 70%;
+}
+
+/* Custom 3xl breakpoint styles for screens > 1920px */
+@media (min-width: 1921px) {
+    .three-xl-grid-cols-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .three-xl-max-w {
+        max-width: 110rem;
+    }
+}
+
+/* Custom 3xl breakpoint styles for screens > 1920px */
+@media (min-width: 1921px) {
+    .three-xl-grid-cols-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .three-xl-max-w {
+        max-width: 110rem;
+    }
+}
+
+/* Custom scrollbar styles for black background */
+::-webkit-scrollbar {
+    width: 8px;
+    background: #000;
+}
+
+::-webkit-scrollbar-thumb {
+    background: oklch(49.1% 0.27 292.581);
+    border-radius: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #000;
+}
+
+/* For Firefox */
+html {
+    scrollbar-color: oklch(49.1% 0.27 292.581) #000;
+    scrollbar-width: thin;
+}
+
+/* Reserve scrollbar gutter to prevent layout shift when the scrollbar appears/disappears */
+html,
+body,
+main {
+    scrollbar-gutter: stable;
+}
+
+/* Custom cursor overrides */
+/* Pointer */
+.cursor-pointer,
+button,
+[role="button"],
+input[type="checkbox"],
+input[type="radio"],
+label[for] {
+    cursor: url('/icons/cursors/cursor-pointer.svg') 8 8, pointer;
+}
+
+/* Text selection */
+.cursor-text,
+input[type="text"],
+textarea,
+[contenteditable="true"] {
+    cursor: url('/icons/cursors/cursor-text.svg') 8 8, text;
+}
+
+/* Move */
+.cursor-move,
+[draggable="true"],
+.drag-handle {
+    cursor: url('/icons/cursors/cursor-move.svg') 8 8, move;
+}
+
+/* NESW resize (diagonal). Mapping to custom diagonal arrow */
+.cursor-nesw-resize {
+    cursor: url('/icons/cursors/cursor-nesw-resize.svg') 8 8, nesw-resize;
+}
+
+/* Link/external link */
+.cursor-link,
+a[href] {
+    cursor: url('/icons/cursors/cursor-link.svg') 4 4, alias;
+}
+
+/* Default utility to dot */
+.cursor-default,
+body,
+main,
+#root,
+.app-root {
+    cursor: url('/icons/cursors/cursor-dot.svg') 4 4, auto;
+}
+
+/* Loading Animation Styles */
+@keyframes contentFadeIn {
+    0% {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes titleMoveToPosition {
+    0% {
+        transform: scale(1.2) translateY(0);
+    }
+
+    100% {
+        transform: scale(1) translateY(0);
+    }
+}
+
+.content-fade-in {
+    opacity: 0;
+    animation: contentFadeIn 0.5s ease-out forwards;
+}
+
+.title-transition {
+    animation: titleMoveToPosition 1s ease-out forwards;
+}
+
+.loading-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgb(0, 0, 0);
+    z-index: 1000;
+}
+
+.loading-text {
+    font-size: 3rem;
+    font-weight: 300;
+    color: rgb(196, 181, 253);
+    font-family: 'Courier New', monospace;
+}
+
+@media (max-width: 640px) {
+    .loading-text {
+        font-size: 2rem;
+    }
+}

@@ -11,7 +11,8 @@
         "db:push": "drizzle-kit push",
         "db:studio": "drizzle-kit studio",
         "auth:generate": "npx tsx scripts/generate-auth-key.ts",
-        "migrate:manifests": "npx tsx scripts/migrate-manifests.ts"
+        "migrate:manifests": "npx tsx scripts/migrate-manifests.ts",
+        "deploy": "npx wrangler pages deploy dist"
     },
     "dependencies": {
         "@neondatabase/serverless": "^0.10.4",

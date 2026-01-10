@@ -23,18 +23,6 @@ export default function CollectionPage() {
   const [loading, setLoading] = createSignal(true);
   const [notFound, setNotFound] = createSignal(false);
 
-  // Generate a seed from the collection id for consistent shuffling
-  const seed = () => {
-    const id = params.id || "";
-    let hash = 0;
-    for (let i = 0; i < id.length; i++) {
-      const char = id.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash;
-    }
-    return Math.abs(hash) % 1000;
-  };
-
   // Transform photos to match the gallery format
   const photos = (): GalleryPhoto[] => {
     const data = collection();

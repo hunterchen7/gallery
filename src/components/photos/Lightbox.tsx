@@ -117,11 +117,12 @@ export function Lightbox({
             setMagnifierPos({ x, y });
           }}
         >
-          {/* Thumbnail image underneath main image */}
+          {/* Thumbnail image sizes the container; full image overlays on top */}
           <img
             src={`${S3_PREFIX}${photo().thumbnail}`}
             alt="thumbnail"
-            class="absolute top-0 left-0 max-h-[95vh] max-w-[98vw] rounded-lg shadow-lg w-full h-full object-contain brightness-85 select-none"
+            class="max-h-[95vh] max-w-[95vw] rounded-lg shadow-lg select-none brightness-85"
+            style={{ display: "block" }}
           />
           {shouldLoad() && (
             <img
@@ -133,7 +134,7 @@ export function Lightbox({
                 setImgHeight(e.currentTarget.naturalHeight);
                 setImageLoaded(true);
               }}
-              class="max-h-[95vh] max-w-[95vw] rounded-lg shadow-lg relative z-1 select-none"
+              class="absolute top-0 left-0 w-full h-full rounded-lg shadow-lg z-1 select-none object-contain"
               style={{
                 display: "block",
                 cursor: (() => {

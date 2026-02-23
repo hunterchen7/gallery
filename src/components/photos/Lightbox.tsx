@@ -28,12 +28,42 @@ export function Lightbox({
   const [imgHeight, setImgHeight] = createSignal<number>(0);
   const [isMobile, setIsMobile] = createSignal(false);
   const [imageLoaded, setImageLoaded] = createSignal(false);
+  const [thumbSize, setThumbSize] = createSignal<{ w: number; h: number } | null>(null);
+  const [loadProgress, setLoadProgress] = createSignal<number | null>(null);
+  const [loadedBytes, setLoadedBytes] = createSignal(0);
+  const [totalBytes, setTotalBytes] = createSignal(0);
 
   onMount(() => {
     setIsMobile(window.matchMedia("(pointer: coarse)").matches);
   });
 
   const photoUrl = `${S3_PREFIX}${photo().url}`;
+
+  // Track download progress via a parallel fetch that shares the HTTP cache with <img>
+  createEffect(() => {
+    if (!shouldLoad()) return;
+    setLoadProgress(null);
+
+    const controller = new AbortController();
+    fetch(photoUrl, { signal: controller.signal })
+      .then(async (res) => {
+        const total = Number(res.headers.get("Content-Length") || 0);
+        if (!total || !res.body) return;
+        setTotalBytes(total);
+        const reader = res.body.getReader();
+        let loaded = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          loaded += value.byteLength;
+          setLoadedBytes(loaded);
+          setLoadProgress(loaded / total);
+        }
+      })
+      .catch(() => {});
+
+    onCleanup(() => controller.abort());
+  });
 
   const magnifierStyle = (): JSX.CSSProperties => {
     if (!isZoomMode() || !shouldLoad() || imgWidth() <= 0 || imgHeight() <= 0) {
@@ -121,8 +151,23 @@ export function Lightbox({
           <img
             src={`${S3_PREFIX}${photo().thumbnail}`}
             alt="thumbnail"
-            class="max-h-[95vh] max-w-[95vw] rounded-lg shadow-lg select-none brightness-85"
-            style={{ display: "block" }}
+            class="rounded-lg shadow-lg select-none brightness-85 blur-xs"
+            onLoad={(e) => {
+              const ar = e.currentTarget.naturalWidth / e.currentTarget.naturalHeight;
+              const maxW = window.innerWidth * 0.95;
+              const maxH = window.innerHeight * 0.95;
+              let w = maxW;
+              let h = w / ar;
+              if (h > maxH) {
+                h = maxH;
+                w = h * ar;
+              }
+              setThumbSize({ w, h });
+            }}
+            style={{
+              display: "block",
+              ...(thumbSize() ? { width: `${thumbSize()!.w}px`, height: `${thumbSize()!.h}px` } : { "max-width": "95vw", "max-height": "95vh" }),
+            }}
           />
           {shouldLoad() && (
             <img
@@ -163,6 +208,21 @@ export function Lightbox({
                 img.src = `${S3_PREFIX}${photo().url}`;
               }}
             />
+          )}
+
+          {/* Download progress bar */}
+          {loadProgress() !== null && !imageLoaded() && (
+            <div class="absolute top-1/2 left-1/4 right-1/4 -translate-y-1/2 z-2 flex flex-col items-center gap-2">
+              <div class="w-full h-1 rounded-full overflow-hidden bg-white/20">
+                <div
+                  class="h-full bg-white/80 rounded-full transition-[width] duration-150"
+                  style={{ width: `${(loadProgress()! * 100).toFixed(1)}%` }}
+                />
+              </div>
+              <span class="text-white/60 text-xs select-none">
+                {(loadedBytes() / 1024 / 1024).toFixed(1)} / {(totalBytes() / 1024 / 1024).toFixed(1)} MB
+              </span>
+            </div>
           )}
 
           {/* Magnifier lens */}

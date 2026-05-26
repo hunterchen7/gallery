@@ -25,22 +25,32 @@ export function UploadModal(props: UploadModalProps) {
     [],
   );
   const [uploading, setUploading] = createSignal(false);
+  const [isDraggingOver, setIsDraggingOver] = createSignal(false);
 
-  function handleFileSelect(e: Event) {
-    const input = e.target as HTMLInputElement;
-    if (!input.files) return;
+  function isImageFile(file: File) {
+    return (
+      file.type.startsWith("image/") ||
+      /\.(avif|gif|heic|heif|jpe?g|png|webp)$/i.test(file.name)
+    );
+  }
 
-    const newFiles: UploadState[] = Array.from(input.files).map((file) => ({
-      file,
-      status: "pending" as const,
-      progress: 0,
-    }));
+  function addFiles(selectedFiles: File[]) {
+    const newFiles: UploadState[] = selectedFiles
+      .filter(isImageFile)
+      .map((file) => ({
+        file,
+        status: "pending" as const,
+        progress: 0,
+      }));
 
+    if (newFiles.length === 0) return;
+
+    const startIndex = files().length;
     setFiles((prev) => [...prev, ...newFiles]);
 
     // Process each file
     newFiles.forEach(async (uploadState, index) => {
-      const actualIndex = files().length - newFiles.length + index;
+      const actualIndex = startIndex + index;
       updateFileStatus(actualIndex, "processing");
 
       try {
@@ -58,6 +68,40 @@ export function UploadModal(props: UploadModalProps) {
         updateFileStatus(actualIndex, "error", String(error));
       }
     });
+  }
+
+  function handleFileSelect(e: Event) {
+    const input = e.target as HTMLInputElement;
+    if (!input.files) return;
+
+    addFiles(Array.from(input.files));
+    input.value = "";
+  }
+
+  function handleDragOver(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "copy";
+    }
+    setIsDraggingOver(true);
+  }
+
+  function handleDragLeave(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+  }
+
+  function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+
+    const droppedFiles = e.dataTransfer?.files;
+    if (!droppedFiles || droppedFiles.length === 0) return;
+
+    addFiles(Array.from(droppedFiles));
   }
 
   function updateFileStatus(
@@ -200,7 +244,17 @@ export function UploadModal(props: UploadModalProps) {
 
         {/* File input */}
         <div class="mb-6">
-          <label class="block w-full p-8 border-2 border-dashed border-violet-700 rounded-lg text-center cursor-pointer hover:border-violet-500 hover:bg-zinc-800/50 transition-colors">
+          <label
+            onDragEnter={handleDragOver}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            class={`block w-full p-8 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors ${
+              isDraggingOver()
+                ? "border-violet-400 bg-violet-950/40"
+                : "border-violet-700 hover:border-violet-500 hover:bg-zinc-800/50"
+            }`}
+          >
             <Upload class="w-8 h-8 mx-auto mb-2 text-violet-400" />
             <span class="text-violet-300">
               Click to select images or drag and drop

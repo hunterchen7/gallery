@@ -89,6 +89,7 @@ export async function POST(event: APIEvent) {
   }
 
   let photo;
+  let wasDuplicate = false;
   try {
     [photo] = await db
       .insert(schema.photos)
@@ -105,9 +106,13 @@ export async function POST(event: APIEvent) {
       where: eq(schema.photos.contentHash, contentHash),
     });
     if (!photo) throw error;
+    wasDuplicate = true;
   }
 
   await associateWithCollections(photo.id);
 
-  return json(photo, { status: existingPhoto ? 200 : 201 });
+  return json(
+    wasDuplicate ? { ...photo, duplicate: true } : photo,
+    { status: wasDuplicate ? 200 : 201 },
+  );
 }

@@ -5,6 +5,7 @@ import { getStoredAuthKey } from "~/lib/auth";
 // Shared store for collections (cached across navigation)
 const [collections, setCollections] = createSignal<Collection[]>([]);
 const [collectionsLoaded, setCollectionsLoaded] = createSignal(false);
+let loadedForAdmin = false;
 
 // Session storage key prefix for tracking if animations have played per collection
 const ANIMATIONS_PLAYED_PREFIX = "gallery-animations-played-";
@@ -14,7 +15,8 @@ export function useCollections() {
     collections,
     collectionsLoaded,
     async loadCollections() {
-      if (collectionsLoaded()) return; // Already loaded
+      const isAdmin = getStoredAuthKey() !== null;
+      if (collectionsLoaded() && loadedForAdmin === isAdmin) return;
 
       try {
         const res = await fetch("/api/collections", {
@@ -23,6 +25,7 @@ export function useCollections() {
         if (res.ok) {
           const data = await res.json();
           setCollections(data);
+          loadedForAdmin = isAdmin;
         }
       } catch (e) {
         console.error("Failed to fetch collections:", e);

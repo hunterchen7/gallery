@@ -26,6 +26,12 @@ Run the development server:
 npm run dev
 ```
 
+Apply schema changes after pulling a version that updates `src/db/schema.ts`:
+
+```bash
+npm run db:push
+```
+
 Build for production:
 
 ```bash

@@ -9,6 +9,7 @@ import {
   Trash2,
   X,
   Check,
+  CopyPlus,
 } from "lucide-solid";
 import { isAuthenticated, getStoredAuthKey } from "~/lib/auth";
 import { S3_PREFIX } from "~/types/photo";
@@ -26,6 +27,11 @@ interface CollectionWithPhotos {
   name: string;
   description: string | null;
   photos: PhotoItem[];
+}
+
+interface CollectionSummary {
+  id: string;
+  name: string;
 }
 
 // Seeded random for consistent shuffling
@@ -50,7 +56,9 @@ function shuffleArray<T>(array: T[], seed?: number): T[] {
 }
 
 async function fetchCollection(id: string): Promise<CollectionWithPhotos> {
-  const res = await fetch(`/api/collections/${id}`);
+  const res = await fetch(`/api/collections/${id}`, {
+    headers: { "X-Auth-Key": getStoredAuthKey() || "" },
+  });
   if (!res.ok) throw new Error("Failed to fetch collection");
   return res.json();
 }
@@ -74,6 +82,13 @@ export default function ReorderPage() {
     new Set(),
   );
   const [selectionMode, setSelectionMode] = createSignal(false);
+  const [collections, setCollections] = createSignal<CollectionSummary[]>([]);
+  const [targetCollectionId, setTargetCollectionId] = createSignal("");
+  const [addingToCollection, setAddingToCollection] = createSignal(false);
+  const [addResult, setAddResult] = createSignal<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
 
   // Computed: has changes
   const hasChanges = () => {
@@ -87,10 +102,21 @@ export default function ReorderPage() {
   onMount(async () => {
     setIsAuthed(isAuthenticated());
     try {
-      const data = await fetchCollection(params.id!);
+      const [data, collectionsRes] = await Promise.all([
+        fetchCollection(params.id!),
+        fetch("/api/collections", {
+          headers: { "X-Auth-Key": getStoredAuthKey() || "" },
+        }),
+      ]);
       setCollection(data);
       setPhotos([...data.photos]);
       setOriginalPhotos([...data.photos]);
+      if (collectionsRes.ok) {
+        const collectionList: CollectionSummary[] = await collectionsRes.json();
+        const targets = collectionList.filter((item) => item.id !== params.id);
+        setCollections(targets);
+        if (targets[0]) setTargetCollectionId(targets[0].id);
+      }
     } catch (e) {
       console.error("Failed to load collection:", e);
     }
@@ -171,6 +197,45 @@ export default function ReorderPage() {
     setRemovedPhotoIds(new Set<string>());
     setSelectedPhotos(new Set<string>());
     setSelectionMode(false);
+  }
+
+  async function handleAddToCollection() {
+    const photoIds = [...selectedPhotos()];
+    const targetId = targetCollectionId();
+    if (photoIds.length === 0 || !targetId) return;
+
+    setAddingToCollection(true);
+    setAddResult(null);
+    try {
+      const response = await fetch(`/api/collections/${targetId}/photos`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Auth-Key": getStoredAuthKey() || "",
+        },
+        body: JSON.stringify({ photoIds }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to add photos");
+      }
+
+      const targetName = collections().find((item) => item.id === targetId)?.name;
+      const details = result.alreadyPresent
+        ? ` (${result.alreadyPresent} already there)`
+        : "";
+      setAddResult({
+        type: "success",
+        message: `Added ${result.added} photo(s) to ${targetName || targetId}${details}.`,
+      });
+    } catch (error) {
+      setAddResult({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to add photos",
+      });
+    } finally {
+      setAddingToCollection(false);
+    }
   }
 
   async function handleSave() {
@@ -326,6 +391,36 @@ export default function ReorderPage() {
 
               <div class="flex items-center gap-2">
                 <Show when={selectionMode() && selectedPhotos().size > 0}>
+                  <Show when={collections().length > 0}>
+                    <select
+                      value={targetCollectionId()}
+                      onChange={(event) =>
+                        setTargetCollectionId(event.currentTarget.value)
+                      }
+                      disabled={addingToCollection()}
+                      class="max-w-48 rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-violet-200 focus:border-violet-500 focus:outline-none"
+                      aria-label="Target collection"
+                    >
+                      <For each={collections()}>
+                        {(target) => (
+                          <option value={target.id}>{target.name}</option>
+                        )}
+                      </For>
+                    </select>
+                    <button
+                      onClick={handleAddToCollection}
+                      disabled={addingToCollection() || !targetCollectionId()}
+                      class="flex items-center gap-2 rounded px-3 py-1.5 text-sm text-sky-300 transition-colors hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Show
+                        when={addingToCollection()}
+                        fallback={<CopyPlus class="w-4 h-4" />}
+                      >
+                        <Loader2 class="w-4 h-4 animate-spin" />
+                      </Show>
+                      Add to collection
+                    </button>
+                  </Show>
                   <button
                     onClick={handleRemoveSelected}
                     class="flex items-center gap-2 px-3 py-1.5 text-sm text-red-400 hover:bg-red-500/20 rounded transition-colors"
@@ -346,9 +441,24 @@ export default function ReorderPage() {
               </div>
             </div>
 
+            <Show when={addResult()}>
+              {(result) => (
+                <div
+                  class={`mb-4 rounded border p-2 text-sm ${
+                    result().type === "success"
+                      ? "border-green-500/30 bg-green-500/10 text-green-400"
+                      : "border-red-500/30 bg-red-500/10 text-red-400"
+                  }`}
+                >
+                  {result().message}
+                </div>
+              )}
+            </Show>
+
             <p class="text-sm text-zinc-500 mb-4">
               <Show when={selectionMode()}>
-                Click photos to select them, then remove from collection.
+                Click photos to select them, then add them to another collection
+                or remove them from this one.
               </Show>
               <Show when={!selectionMode()}>
                 Drag to reorder • Click "Select" to remove photos • Changes save

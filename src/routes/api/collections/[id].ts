@@ -10,9 +10,15 @@ import { eq, and } from "drizzle-orm";
 export async function GET(event: APIEvent) {
   const id = event.params.id;
   const db = getDb();
+  const isAdmin = event.request.headers.get("X-Auth-Key") === process.env.API_KEY;
 
   const collection = await db.query.collections.findFirst({
-    where: eq(schema.collections.id, id),
+    where: isAdmin
+      ? eq(schema.collections.id, id)
+      : and(
+          eq(schema.collections.id, id),
+          eq(schema.collections.isPrivate, false),
+        ),
     with: {
       photoCollections: {
         with: {
@@ -54,7 +60,7 @@ export async function PUT(event: APIEvent) {
 
   const id = event.params.id;
   const body = await event.request.json();
-  const { name, description } = body;
+  const { name, description, isPrivate } = body;
 
   const db = getDb();
 
@@ -63,6 +69,7 @@ export async function PUT(event: APIEvent) {
     .set({
       name: name || undefined,
       description: description,
+      isPrivate: typeof isPrivate === "boolean" ? isPrivate : undefined,
       updatedAt: new Date(),
     })
     .where(eq(schema.collections.id, id))

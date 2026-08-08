@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js";
 import type { Collection } from "~/db/schema";
+import { getStoredAuthKey } from "~/lib/auth";
 
 // Shared store for collections (cached across navigation)
 const [collections, setCollections] = createSignal<Collection[]>([]);
@@ -16,7 +17,9 @@ export function useCollections() {
       if (collectionsLoaded()) return; // Already loaded
 
       try {
-        const res = await fetch("/api/collections");
+        const res = await fetch("/api/collections", {
+          headers: { "X-Auth-Key": getStoredAuthKey() || "" },
+        });
         if (res.ok) {
           const data = await res.json();
           setCollections(data);

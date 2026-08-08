@@ -5,6 +5,7 @@ import {
   uuid,
   primaryKey,
   integer,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -12,6 +13,7 @@ export const collections = pgTable("collections", {
   id: text("id").primaryKey(), // URL slug, e.g., "airshow"
   name: text("name").notNull(), // Display name, e.g., "Airshow ✈️"
   description: text("description"), // Optional description
+  isPrivate: boolean("is_private").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -7,9 +7,11 @@ import { eq } from "drizzle-orm";
  * GET /api/collections - Get all collections
  * No authentication required
  */
-export async function GET() {
+export async function GET(event: APIEvent) {
   const db = getDb();
+  const isAdmin = event.request.headers.get("X-Auth-Key") === process.env.API_KEY;
   const collections = await db.query.collections.findMany({
+    where: isAdmin ? undefined : eq(schema.collections.isPrivate, false),
     orderBy: (collections, { asc }) => [asc(collections.name)],
   });
   return json(collections);
@@ -29,7 +31,7 @@ export async function POST(event: APIEvent) {
   }
 
   const body = await event.request.json();
-  const { id, name, description } = body;
+  const { id, name, description, isPrivate } = body;
 
   if (!id || !name) {
     return json({ error: "id and name are required" }, { status: 400 });
@@ -63,6 +65,7 @@ export async function POST(event: APIEvent) {
       id,
       name,
       description: description || null,
+      isPrivate: isPrivate === true,
     })
     .returning();
 

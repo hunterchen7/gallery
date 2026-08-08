@@ -17,6 +17,9 @@ export function CollectionModal(props: CollectionModalProps) {
   const [description, setDescription] = createSignal(
     props.collection?.description || "",
   );
+  const [isPrivate, setIsPrivate] = createSignal(
+    props.collection?.isPrivate || false,
+  );
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal("");
 
@@ -65,6 +68,7 @@ export function CollectionModal(props: CollectionModalProps) {
           id: id(),
           name: name(),
           description: description() || null,
+          isPrivate: isPrivate(),
         }),
       });
 
@@ -167,6 +171,23 @@ export function CollectionModal(props: CollectionModalProps) {
               class="w-full px-4 py-2 bg-zinc-800 border border-violet-700 rounded text-violet-100 placeholder-violet-500 focus:outline-none focus:border-violet-500 resize-none"
             />
           </div>
+
+          <label class="flex items-start gap-3 p-3 bg-zinc-800/70 border border-zinc-700 rounded cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isPrivate()}
+              onChange={(e) => setIsPrivate(e.currentTarget.checked)}
+              class="mt-0.5 accent-violet-500"
+            />
+            <span>
+              <span class="block text-sm text-violet-300">
+                Private collection
+              </span>
+              <span class="block text-xs text-zinc-500 mt-0.5">
+                Hidden from public navigation and only available while logged in.
+              </span>
+            </span>
+          </label>
 
           <Show when={error()}>
             <p class="text-red-400 text-sm">{error()}</p>

@@ -2,6 +2,7 @@ import { Title, Meta } from "@solidjs/meta";
 import { useParams } from "@solidjs/router";
 import { createSignal, createEffect, Show } from "solid-js";
 import { Gallery, type GalleryPhoto } from "~/components/photos/GalleryV2";
+import { getStoredAuthKey } from "~/lib/auth";
 
 interface CollectionWithPhotos {
   id: string;
@@ -45,7 +46,9 @@ export default function CollectionPage() {
     setLoading(true);
     setNotFound(false);
 
-    fetch(`/api/collections/${id}`)
+    fetch(`/api/collections/${id}`, {
+      headers: { "X-Auth-Key": getStoredAuthKey() || "" },
+    })
       .then(async (res) => {
         if (res.ok) {
           const data = await res.json();

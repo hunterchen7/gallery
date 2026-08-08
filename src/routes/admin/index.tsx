@@ -1,5 +1,12 @@
 import { createSignal, For, Show, onMount } from "solid-js";
-import { Plus, Edit, ArrowLeft, Loader2, GripVertical } from "lucide-solid";
+import {
+  Plus,
+  Edit,
+  ArrowLeft,
+  Loader2,
+  GripVertical,
+  Lock,
+} from "lucide-solid";
 import { isAuthenticated, getStoredAuthKey } from "~/lib/auth";
 import { CollectionModal } from "~/components/admin/CollectionModal";
 import { AdminToggle } from "~/components/admin/AdminToggle";
@@ -19,7 +26,9 @@ export default function AdminPage() {
 
     // Fetch collections client-side only
     try {
-      const res = await fetch("/api/collections");
+      const res = await fetch("/api/collections", {
+        headers: { "X-Auth-Key": getStoredAuthKey() || "" },
+      });
       if (res.ok) {
         const data = await res.json();
         setCollections(data);
@@ -36,7 +45,9 @@ export default function AdminPage() {
 
   function refetch() {
     setLoading(true);
-    fetch("/api/collections")
+    fetch("/api/collections", {
+      headers: { "X-Auth-Key": getStoredAuthKey() || "" },
+    })
       .then((res) => res.json())
       .then((data) => setCollections(data))
       .catch((e) => console.error("Failed to fetch collections:", e))
@@ -129,6 +140,12 @@ export default function AdminPage() {
                             <span class="text-xs text-zinc-500">
                               /{collection.id}
                             </span>
+                            <Show when={collection.isPrivate}>
+                              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-xs">
+                                <Lock class="w-3 h-3" />
+                                Private
+                              </span>
+                            </Show>
                           </div>
                           <Show when={collection.description}>
                             <p class="text-sm text-zinc-400 mt-1 truncate">

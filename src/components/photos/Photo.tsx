@@ -11,11 +11,8 @@ interface PhotoProps {
   playAnimation?: boolean;
   editing?: boolean;
   selected?: boolean;
-  reorderMode?: boolean;
   dragging?: boolean;
   onReorderPointerDown?: (event: PointerEvent) => void;
-  onReorderPointerMove?: (event: PointerEvent) => void;
-  onReorderPointerEnd?: (event: PointerEvent) => void;
 }
 
 export function Photo(props: PhotoProps) {
@@ -86,19 +83,16 @@ export function Photo(props: PhotoProps) {
 
   return (
     <div
-      data-reorder-photo-id={props.reorderMode ? props.photo.id : undefined}
+      data-reorder-photo-id={props.editing ? props.photo.id : undefined}
       onPointerDown={props.onReorderPointerDown}
-      onPointerMove={props.onReorderPointerMove}
-      onPointerUp={props.onReorderPointerEnd}
-      onPointerCancel={props.onReorderPointerEnd}
       onClick={props.onClick}
-      class={`relative flex-grow rounded shadow-lg overflow-hidden border bg-violet-900/20 flex flex-col min-w-[135px] max-w-[600px] min-h-[135px] ${props.playAnimation ?? true ? "content-fade-in" : ""} transition-[border-color,box-shadow,transform,opacity] ${
+      class={`group relative flex-grow rounded shadow-lg overflow-hidden border bg-violet-900/20 flex flex-col min-w-[135px] max-w-[600px] min-h-[135px] ${props.playAnimation ?? true ? "content-fade-in" : ""} transition-[border-color,box-shadow,transform,opacity] ${
         props.selected
           ? "border-violet-200 ring-4 ring-inset ring-violet-400 shadow-[0_0_28px_rgba(139,92,246,0.65)]"
           : props.editing
             ? "border-zinc-700 hover:border-violet-500"
             : "border-violet-700/50 hover:scale-[1.01]"
-      } ${props.reorderMode ? "touch-none cursor-grab select-none active:cursor-grabbing" : props.editing ? "cursor-pointer" : ""} ${props.dragging ? "z-20 scale-[0.98] opacity-70 ring-2 ring-violet-300" : ""}`}
+      } ${props.editing ? "touch-none cursor-grab select-none active:cursor-grabbing" : ""} ${props.dragging ? "border-dashed border-violet-400 bg-violet-950/50 opacity-20" : ""}`}
       style={`
   flex-basis: ${baseWidth() * aspectRatio()}px;
   ${props.playAnimation ?? true ? `animation-delay: ${Math.min(props.index * 0.08, 2)}s;` : ""}
@@ -116,12 +110,12 @@ export function Photo(props: PhotoProps) {
           alt="Gallery photo"
           class={`w-full h-full object-cover transition-opacity duration-300 max-h-96 max-w-[600px] ${
             loaded() ? "opacity-100" : "opacity-0"
-          } transition-transform ${props.reorderMode ? "pointer-events-none select-none" : props.editing ? "" : "hover:scale-[1.02] cursor-nesw-resize"}`}
+          } transition-transform ${props.editing ? "pointer-events-none select-none" : "hover:scale-[1.02] cursor-nesw-resize"}`}
           loading="lazy"
           draggable={false}
           onLoad={handleImageLoad}
         />
-        <Show when={props.editing && !props.reorderMode}>
+        <Show when={props.editing}>
           <Show when={props.selected}>
             <span class="pointer-events-none absolute inset-0 bg-violet-500/20" />
           </Show>
@@ -136,16 +130,16 @@ export function Photo(props: PhotoProps) {
               <Check class="h-5 w-5 stroke-[3] text-white" />
             </Show>
           </span>
-        </Show>
-        <Show when={props.reorderMode}>
-          <span class="absolute left-2 top-2 flex items-center gap-1 rounded-md bg-black/70 px-2 py-1 text-xs text-white shadow-lg">
+          <span class="pointer-events-none absolute left-2 top-2 flex items-center gap-1 rounded-md bg-black/70 px-2 py-1 text-xs text-white opacity-70 shadow-lg transition-opacity group-hover:opacity-100">
             <GripVertical class="h-3.5 w-3.5" />
             {props.index + 1}
           </span>
         </Show>
       </div>
       <div class="p-1 flex-shrink-0">
-        <span class="text-xs text-violet-300 font-mono inline cursor-text">
+        <span
+          class={`inline font-mono text-xs text-violet-300 ${props.editing ? "cursor-grab" : "cursor-text"}`}
+        >
           {props.photo.date ? formatDate(props.photo.date) : ""}
         </span>
       </div>

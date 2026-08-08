@@ -10,7 +10,7 @@ export default function ReorderRedirect() {
   onMount(() => {
     navigate(
       isAuthenticated()
-        ? `/${params.id}?edit=1&mode=reorder`
+        ? `/${params.id}?edit=1`
         : "/login",
       { replace: true },
     );

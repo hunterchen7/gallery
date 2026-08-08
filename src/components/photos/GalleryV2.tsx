@@ -1,4 +1,5 @@
 import {
+  onCleanup,
   createEffect,
   createSignal,
   For,
@@ -7,7 +8,7 @@ import {
   Show,
 } from "solid-js";
 import { A, useSearchParams } from "@solidjs/router";
-import { Images, Pencil } from "lucide-solid";
+import { GripVertical, Images, Pencil } from "lucide-solid";
 import { Photo as PhotoComponent } from "~/components/photos/Photo";
 import { Carousel } from "~/components/photos/Carousel";
 import { getStoredAuthKey, isAuthenticated } from "~/lib/auth";
@@ -15,10 +16,10 @@ import { UploadButton } from "~/components/admin/UploadButton";
 import {
   AdminGalleryOverlay,
   type EditableCollection,
-  type GalleryEditMode,
 } from "~/components/admin/AdminGalleryOverlay";
-import { type GalleryPhoto } from "~/types/photo";
+import { type GalleryPhoto, S3_PREFIX } from "~/types/photo";
 import { useCollections, shouldPlayAnimations } from "~/lib/galleryStore";
+import { formatDate } from "~/utils/date";
 
 export { type GalleryPhoto } from "~/types/photo";
 
@@ -29,6 +30,23 @@ export interface GalleryProps {
   currentCollection?: EditableCollection;
   loading?: boolean;
 }
+
+interface PhotoDragState {
+  photo: GalleryPhoto;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  offsetX: number;
+  offsetY: number;
+  width: number;
+  height: number;
+  active: boolean;
+}
+
+const SLOT_DEBOUNCE_MS = 140;
+const SLOT_ANIMATION_MS = 220;
 
 function GalleryShell(props: { children: JSX.Element }) {
   return (
@@ -64,14 +82,14 @@ export function Gallery(props: GalleryProps) {
   const { collections, collectionsLoaded, loadCollections } = useCollections();
   const [isAdmin, setIsAdmin] = createSignal(false);
   const [editMode, setEditMode] = createSignal(false);
-  const [galleryEditMode, setGalleryEditMode] =
-    createSignal<GalleryEditMode>("select");
   const [editablePhotos, setEditablePhotos] = createSignal<GalleryPhoto[]>([]);
   const [originalOrder, setOriginalOrder] = createSignal<string[]>([]);
+  const [orderHistory, setOrderHistory] = createSignal<string[][]>([]);
+  const [orderHistoryIndex, setOrderHistoryIndex] = createSignal(0);
   const [selectedPhotoIds, setSelectedPhotoIds] = createSignal<Set<string>>(
     new Set(),
   );
-  const [draggedPhotoId, setDraggedPhotoId] = createSignal<string | null>(null);
+  const [dragState, setDragState] = createSignal<PhotoDragState>();
   const [busy, setBusy] = createSignal(false);
   const [message, setMessage] = createSignal<
     { type: "success" | "error"; text: string } | undefined
@@ -80,8 +98,15 @@ export function Gallery(props: GalleryProps) {
     shouldPlayAnimations(props.currentCollectionId),
   );
   const [captionVisible, setCaptionVisible] = createSignal(true);
+  let suppressedClick: { photoId: string; until: number } | undefined;
+  let pendingSlotPhotoId: string | undefined;
+  let pendingSlotTimer: number | undefined;
+  let lastSlottedPhotoId: string | undefined;
+  let slotLockedUntil = 0;
 
   const photos = () => editablePhotos();
+  const canUndo = () => orderHistoryIndex() > 0;
+  const canRedo = () => orderHistoryIndex() < orderHistory().length - 1;
   const orderChanged = () => {
     const current = photos().map((photo) => photo.id);
     const original = originalOrder();
@@ -93,8 +118,11 @@ export function Gallery(props: GalleryProps) {
 
   createEffect(() => {
     const nextPhotos = props.photos;
+    const nextOrder = nextPhotos.map((photo) => photo.id);
     setEditablePhotos([...nextPhotos]);
-    setOriginalOrder(nextPhotos.map((photo) => photo.id));
+    setOriginalOrder(nextOrder);
+    setOrderHistory([nextOrder]);
+    setOrderHistoryIndex(0);
   });
 
   createEffect(() => {
@@ -103,21 +131,29 @@ export function Gallery(props: GalleryProps) {
     setTimeout(() => setCaptionVisible(true), 250);
   });
 
-  onMount(async () => {
-    const authenticated = isAuthenticated();
-    setIsAdmin(authenticated);
-    await loadCollections();
+  onMount(() => {
+    window.addEventListener("keydown", handleEditKeyDown);
+    void (async () => {
+      const authenticated = isAuthenticated();
+      setIsAdmin(authenticated);
+      await loadCollections();
 
-    if (authenticated && searchParams.edit === "1") {
-      setEditMode(true);
-      if (searchParams.mode === "reorder") setGalleryEditMode("reorder");
-    }
+      if (authenticated && searchParams.edit === "1") setEditMode(true);
 
-    const imageParam = searchParams.image;
-    if (searchParams.edit !== "1" && imageParam) {
-      const photoIndex = photos().findIndex((photo) => photo.url === imageParam);
-      if (photoIndex !== -1) setExpandedIndex(photoIndex);
-    }
+      const imageParam = searchParams.image;
+      if (searchParams.edit !== "1" && imageParam) {
+        const photoIndex = photos().findIndex(
+          (photo) => photo.url === imageParam,
+        );
+        if (photoIndex !== -1) setExpandedIndex(photoIndex);
+      }
+    })();
+  });
+
+  onCleanup(() => {
+    if (typeof window === "undefined") return;
+    window.removeEventListener("keydown", handleEditKeyDown);
+    stopPointerTracking();
   });
 
   function updateUrlWithImage(index: number | null) {
@@ -145,7 +181,15 @@ export function Gallery(props: GalleryProps) {
       setExpandedIndexWithUrl(index);
       return;
     }
-    if (galleryEditMode() === "select") togglePhoto(photo.id);
+
+    if (
+      suppressedClick?.photoId === photo.id &&
+      performance.now() < suppressedClick.until
+    ) {
+      suppressedClick = undefined;
+      return;
+    }
+    togglePhoto(photo.id);
   }
 
   function handleSelectAll() {
@@ -154,13 +198,6 @@ export function Gallery(props: GalleryProps) {
     } else {
       setSelectedPhotoIds(new Set(photos().map((photo) => photo.id)));
     }
-  }
-
-  function handleModeChange(mode: GalleryEditMode) {
-    setGalleryEditMode(mode);
-    setSearchParams({ mode: mode === "reorder" ? "reorder" : undefined });
-    setSelectedPhotoIds(new Set<string>());
-    setMessage(undefined);
   }
 
   function restoreOriginalOrder() {
@@ -175,7 +212,6 @@ export function Gallery(props: GalleryProps) {
     if (orderChanged() && !confirm("Discard your unsaved photo order?")) return;
     if (orderChanged()) restoreOriginalOrder();
     setSelectedPhotoIds(new Set<string>());
-    setGalleryEditMode("select");
     setMessage(undefined);
     setEditMode(false);
     setSearchParams({ edit: undefined, mode: undefined });
@@ -184,11 +220,11 @@ export function Gallery(props: GalleryProps) {
   function enterEditMode() {
     setExpandedIndexWithUrl(null);
     setEditMode(true);
-    setSearchParams({ edit: "1", image: undefined });
+    setSearchParams({ edit: "1", image: undefined, mode: undefined });
   }
 
   function moveDraggedPhoto(targetPhotoId: string) {
-    const draggedId = draggedPhotoId();
+    const draggedId = dragState()?.photo.id;
     if (!draggedId || draggedId === targetPhotoId) return;
 
     const reordered = [...photos()];
@@ -198,41 +234,222 @@ export function Gallery(props: GalleryProps) {
     );
     if (fromIndex === -1 || toIndex === -1) return;
 
+    const previousPositions = new Map<string, DOMRect>();
+    document
+      .querySelectorAll<HTMLElement>("[data-reorder-photo-id]")
+      .forEach((element) => {
+        const photoId = element.dataset.reorderPhotoId;
+        if (photoId) previousPositions.set(photoId, element.getBoundingClientRect());
+      });
+
     const [photo] = reordered.splice(fromIndex, 1);
     reordered.splice(toIndex, 0, photo);
     setEditablePhotos(reordered);
+
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      requestAnimationFrame(() => {
+        document
+          .querySelectorAll<HTMLElement>("[data-reorder-photo-id]")
+          .forEach((element) => {
+            const photoId = element.dataset.reorderPhotoId;
+            const previous = photoId ? previousPositions.get(photoId) : undefined;
+            if (!previous) return;
+            const next = element.getBoundingClientRect();
+            const deltaX = previous.left - next.left;
+            const deltaY = previous.top - next.top;
+            if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) return;
+            element.getAnimations().forEach((animation) => animation.cancel());
+            element.animate(
+              [
+                { transform: `translate(${deltaX}px, ${deltaY}px)` },
+                { transform: "translate(0, 0)" },
+              ],
+              {
+                duration: SLOT_ANIMATION_MS,
+                easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+              },
+            );
+          });
+      });
+    }
   }
 
-  function handleReorderPointerDown(photoId: string, event: PointerEvent) {
+  function handleReorderPointerDown(
+    photo: GalleryPhoto,
+    event: PointerEvent,
+  ) {
     if (
-      galleryEditMode() !== "reorder" ||
+      !editMode() ||
       (event.pointerType === "mouse" && event.button !== 0)
     ) {
       return;
     }
 
-    event.preventDefault();
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-    setDraggedPhotoId(photoId);
+    stopPointerTracking();
+    lastSlottedPhotoId = undefined;
+    slotLockedUntil = 0;
+    const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    setDragState({
+      photo,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      x: event.clientX,
+      y: event.clientY,
+      offsetX: event.clientX - bounds.left,
+      offsetY: event.clientY - bounds.top,
+      width: bounds.width,
+      height: bounds.height,
+      active: false,
+    });
+    window.addEventListener("pointermove", handleReorderPointerMove, {
+      passive: false,
+    });
+    window.addEventListener("pointerup", handleReorderPointerEnd);
+    window.addEventListener("pointercancel", handleReorderPointerEnd);
   }
 
   function handleReorderPointerMove(event: PointerEvent) {
-    if (!draggedPhotoId()) return;
+    const current = dragState();
+    if (!current || event.pointerId !== current.pointerId) return;
+
+    const active =
+      current.active ||
+      Math.hypot(event.clientX - current.startX, event.clientY - current.startY) >
+        6;
+    if (!active) return;
+
     event.preventDefault();
+    if (!current.active) window.getSelection()?.removeAllRanges();
+    setDragState({
+      ...current,
+      x: event.clientX,
+      y: event.clientY,
+      active: true,
+    });
 
     const target = document
       .elementFromPoint(event.clientX, event.clientY)
       ?.closest<HTMLElement>("[data-reorder-photo-id]");
     const targetPhotoId = target?.dataset.reorderPhotoId;
-    if (targetPhotoId) moveDraggedPhoto(targetPhotoId);
+    queuePhotoSlot(targetPhotoId);
+
+    const edge = 72;
+    if (event.clientY < edge) {
+      window.scrollBy(0, -Math.ceil((edge - event.clientY) / 4));
+    } else if (event.clientY > window.innerHeight - edge) {
+      window.scrollBy(
+        0,
+        Math.ceil((event.clientY - (window.innerHeight - edge)) / 4),
+      );
+    }
   }
 
   function handleReorderPointerEnd(event: PointerEvent) {
-    const card = event.currentTarget as HTMLElement;
-    if (card.hasPointerCapture(event.pointerId)) {
-      card.releasePointerCapture(event.pointerId);
+    const current = dragState();
+    if (!current || event.pointerId !== current.pointerId) return;
+
+    if (current.active) {
+      suppressedClick = {
+        photoId: current.photo.id,
+        until: performance.now() + 300,
+      };
+      recordOrder(photos().map((photo) => photo.id));
     }
-    setDraggedPhotoId(null);
+    setDragState(undefined);
+    stopPointerTracking();
+  }
+
+  function stopPointerTracking() {
+    if (typeof window === "undefined") return;
+    window.removeEventListener("pointermove", handleReorderPointerMove);
+    window.removeEventListener("pointerup", handleReorderPointerEnd);
+    window.removeEventListener("pointercancel", handleReorderPointerEnd);
+    clearPendingSlot();
+  }
+
+  function clearPendingSlot() {
+    if (pendingSlotTimer !== undefined) window.clearTimeout(pendingSlotTimer);
+    pendingSlotTimer = undefined;
+    pendingSlotPhotoId = undefined;
+  }
+
+  function queuePhotoSlot(targetPhotoId: string | undefined) {
+    const draggedId = dragState()?.photo.id;
+    if (
+      !targetPhotoId ||
+      targetPhotoId === draggedId ||
+      targetPhotoId === lastSlottedPhotoId ||
+      performance.now() < slotLockedUntil
+    ) {
+      if (targetPhotoId !== pendingSlotPhotoId) clearPendingSlot();
+      return;
+    }
+    if (targetPhotoId === pendingSlotPhotoId) return;
+
+    clearPendingSlot();
+    pendingSlotPhotoId = targetPhotoId;
+    pendingSlotTimer = window.setTimeout(() => {
+      const queuedPhotoId = pendingSlotPhotoId;
+      pendingSlotPhotoId = undefined;
+      pendingSlotTimer = undefined;
+      if (!dragState()?.active || !queuedPhotoId) return;
+
+      moveDraggedPhoto(queuedPhotoId);
+      lastSlottedPhotoId = queuedPhotoId;
+      slotLockedUntil = performance.now() + SLOT_ANIMATION_MS;
+    }, SLOT_DEBOUNCE_MS);
+  }
+
+  function ordersMatch(left: string[], right: string[]) {
+    return (
+      left.length === right.length &&
+      left.every((photoId, index) => photoId === right[index])
+    );
+  }
+
+  function recordOrder(order: string[]) {
+    const history = orderHistory();
+    const index = orderHistoryIndex();
+    if (ordersMatch(history[index] || [], order)) return;
+    setOrderHistory([...history.slice(0, index + 1), order]);
+    setOrderHistoryIndex(index + 1);
+  }
+
+  function applyOrder(order: string[]) {
+    const byId = new Map(photos().map((photo) => [photo.id, photo]));
+    const reordered = order
+      .map((photoId) => byId.get(photoId))
+      .filter((photo): photo is GalleryPhoto => Boolean(photo));
+    setEditablePhotos(reordered);
+  }
+
+  function undoLocalAction() {
+    if (!canUndo()) return;
+    const nextIndex = orderHistoryIndex() - 1;
+    applyOrder(orderHistory()[nextIndex]);
+    setOrderHistoryIndex(nextIndex);
+    setMessage(undefined);
+  }
+
+  function redoLocalAction() {
+    if (!canRedo()) return;
+    const nextIndex = orderHistoryIndex() + 1;
+    applyOrder(orderHistory()[nextIndex]);
+    setOrderHistoryIndex(nextIndex);
+    setMessage(undefined);
+  }
+
+  function handleEditKeyDown(event: KeyboardEvent) {
+    if (!editMode() || busy() || !(event.metaKey || event.ctrlKey)) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.matches("input, textarea, select, [contenteditable=true]")) {
+      return;
+    }
+    if (event.key.toLowerCase() !== "z") return;
+    event.preventDefault();
+    if (event.shiftKey) redoLocalAction();
+    else undoLocalAction();
   }
 
   async function addSelectedToCollection(collectionId: string) {
@@ -300,12 +517,14 @@ export function Gallery(props: GalleryProps) {
         if (response.ok) removed.add(photoId);
       }
 
-      setEditablePhotos((current) =>
-        current.filter((photo) => !removed.has(photo.id)),
+      const remainingPhotos = photos().filter(
+        (photo) => !removed.has(photo.id),
       );
-      setOriginalOrder((current) =>
-        current.filter((photoId) => !removed.has(photoId)),
-      );
+      const remainingOrder = remainingPhotos.map((photo) => photo.id);
+      setEditablePhotos(remainingPhotos);
+      setOriginalOrder(remainingOrder);
+      setOrderHistory([remainingOrder]);
+      setOrderHistoryIndex(0);
       setSelectedPhotoIds(new Set<string>());
       setMessage({
         type: removed.size === photoIds.length ? "success" : "error",
@@ -345,6 +564,8 @@ export function Gallery(props: GalleryProps) {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Failed to save order");
       setOriginalOrder(photoIds);
+      setOrderHistory([photoIds]);
+      setOrderHistoryIndex(0);
       setMessage({ type: "success", text: "Photo order saved" });
     } catch (error) {
       setMessage({
@@ -363,6 +584,7 @@ export function Gallery(props: GalleryProps) {
       [shuffled[index], shuffled[other]] = [shuffled[other], shuffled[index]];
     }
     setEditablePhotos(shuffled);
+    recordOrder(shuffled.map((photo) => photo.id));
     setMessage(undefined);
   }
 
@@ -399,21 +621,54 @@ export function Gallery(props: GalleryProps) {
           collections={collections()}
           currentCollection={props.currentCollection}
           currentCollectionId={props.currentCollectionId}
-          mode={galleryEditMode()}
           photoCount={photos().length}
           selectedCount={selectedPhotoIds().size}
           orderChanged={orderChanged()}
+          canUndo={canUndo()}
+          canRedo={canRedo()}
           busy={busy()}
           message={message()}
           onExit={exitEditMode}
-          onModeChange={handleModeChange}
           onSelectAll={handleSelectAll}
           onAddToCollection={addSelectedToCollection}
           onRemoveFromCollection={removeSelectedFromCollection}
           onSaveOrder={saveOrder}
           onShuffle={shufflePhotos}
+          onUndo={undoLocalAction}
+          onRedo={redoLocalAction}
           onUploadComplete={() => window.location.reload()}
         />
+      </Show>
+
+      <Show when={dragState()?.active ? dragState() : undefined}>
+        {(drag) => (
+          <div
+            class="pointer-events-none fixed z-[70] flex rotate-[1.5deg] scale-[1.04] flex-col overflow-hidden rounded-xl border-2 border-violet-300 bg-zinc-950 shadow-[0_30px_90px_rgba(0,0,0,0.8),0_0_35px_rgba(139,92,246,0.55)]"
+            style={{
+              left: `${drag().x - drag().offsetX}px`,
+              top: `${drag().y - drag().offsetY}px`,
+              width: `${drag().width}px`,
+              height: `${drag().height}px`,
+              "transform-origin": `${drag().offsetX}px ${drag().offsetY}px`,
+            }}
+          >
+            <div class="relative min-h-0 flex-1 overflow-hidden">
+              <img
+                src={`${S3_PREFIX}${drag().photo.thumbnail}`}
+                alt=""
+                class="h-full w-full object-cover"
+                draggable={false}
+              />
+              <span class="absolute left-2 top-2 flex items-center gap-1 rounded-md bg-violet-600 px-2 py-1 text-xs font-medium text-white shadow-lg">
+                <GripVertical class="h-3.5 w-3.5" />
+                Moving
+              </span>
+            </div>
+            <div class="flex h-7 shrink-0 items-center bg-zinc-950 px-2 text-left text-xs text-violet-200">
+              {drag().photo.date ? formatDate(drag().photo.date) : ""}
+            </div>
+          </div>
+        )}
       </Show>
 
       <div class="mx-4 mb-4 text-xs text-violet-200 md:text-sm">
@@ -465,15 +720,12 @@ export function Gallery(props: GalleryProps) {
                     playAnimation={playAnimations() && !editMode()}
                     editing={editMode()}
                     selected={selectedPhotoIds().has(photo.id)}
-                    reorderMode={
-                      editMode() && galleryEditMode() === "reorder"
+                    dragging={
+                      dragState()?.active && dragState()?.photo.id === photo.id
                     }
-                    dragging={draggedPhotoId() === photo.id}
                     onReorderPointerDown={(event) =>
-                      handleReorderPointerDown(photo.id, event)
+                      handleReorderPointerDown(photo, event)
                     }
-                    onReorderPointerMove={handleReorderPointerMove}
-                    onReorderPointerEnd={handleReorderPointerEnd}
                   />
                 )}
               </For>

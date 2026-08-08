@@ -159,18 +159,18 @@ export default function AdminPage() {
                             View
                           </A>
                           <A
-                            href={`/${collection.id}?edit=1&mode=reorder`}
+                            href={`/${collection.id}?edit=1`}
                             class="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-violet-200"
                           >
                             <GripVertical class="h-4 w-4" />
-                            Reorder
+                            Edit photos
                           </A>
                           <button
                             onClick={() => setCollectionModal(collection)}
                             class="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-violet-200"
                           >
                             <Pencil class="h-4 w-4" />
-                            Edit
+                            Settings
                           </button>
                         </div>
                       </article>

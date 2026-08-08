@@ -1,6 +1,5 @@
 import { createEffect, createSignal, For, Show } from "solid-js";
 import {
-  CheckSquare,
   CopyPlus,
   GripVertical,
   Images,
@@ -11,13 +10,13 @@ import {
   Settings,
   Shuffle,
   Trash2,
+  Redo2,
+  Undo2,
   X,
 } from "lucide-solid";
 import type { Collection } from "~/db/schema";
 import { CollectionModal } from "./CollectionModal";
 import { UploadButton } from "./UploadButton";
-
-export type GalleryEditMode = "select" | "reorder";
 
 export interface EditableCollection {
   id: string;
@@ -30,19 +29,21 @@ interface AdminGalleryOverlayProps {
   collections: Collection[];
   currentCollection?: EditableCollection;
   currentCollectionId?: string;
-  mode: GalleryEditMode;
   photoCount: number;
   selectedCount: number;
   orderChanged: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
   busy: boolean;
   message?: { type: "success" | "error"; text: string };
   onExit: () => void;
-  onModeChange: (mode: GalleryEditMode) => void;
   onSelectAll: () => void;
   onAddToCollection: (collectionId: string) => void;
   onRemoveFromCollection: () => void;
   onSaveOrder: () => void;
   onShuffle: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
   onUploadComplete: () => void;
 }
 
@@ -66,8 +67,7 @@ export function AdminGalleryOverlay(props: AdminGalleryOverlayProps) {
 
   function handleCollectionChange(collectionId: string) {
     if (collectionId && collectionId !== props.currentCollectionId) {
-      const mode = props.mode === "reorder" ? "&mode=reorder" : "";
-      window.location.href = `/${collectionId}?edit=1${mode}`;
+      window.location.href = `/${collectionId}?edit=1`;
     }
   }
 
@@ -81,80 +81,61 @@ export function AdminGalleryOverlay(props: AdminGalleryOverlayProps) {
       <div class="fixed bottom-2 left-1/2 z-40 h-16 w-[calc(100vw-1rem)] max-w-6xl -translate-x-1/2 overflow-hidden rounded-xl border border-violet-700/70 bg-zinc-950/95 text-left shadow-2xl backdrop-blur-xl">
         <div class="flex h-full min-w-0 items-center gap-2 p-2">
           <div class="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div class="flex shrink-0 items-center gap-2 border-r border-zinc-800 pr-2">
-            <UploadButton
-              collections={props.collections}
-              defaultCollectionId={props.currentCollectionId}
-              onUploadComplete={props.onUploadComplete}
-              placement="dock"
-            />
-            <span class="hidden items-center gap-2 text-sm font-medium text-violet-200 sm:flex">
-              <Pencil class="h-4 w-4" />
-              Edit gallery
+            <div class="flex shrink-0 items-center gap-2 border-r border-zinc-800 pr-2">
+              <UploadButton
+                collections={props.collections}
+                defaultCollectionId={props.currentCollectionId}
+                onUploadComplete={props.onUploadComplete}
+                placement="dock"
+              />
+              <span class="hidden items-center gap-2 text-sm font-medium text-violet-200 sm:flex">
+                <Pencil class="h-4 w-4" />
+                Edit gallery
+              </span>
+              <select
+                value={props.currentCollectionId || ""}
+                onChange={(event) =>
+                  handleCollectionChange(event.currentTarget.value)
+                }
+                class="max-w-48 rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-sm text-violet-100 focus:border-violet-500 focus:outline-none"
+                aria-label="Current collection"
+              >
+                <For each={props.collections}>
+                  {(collection) => (
+                    <option value={collection.id}>{collection.name}</option>
+                  )}
+                </For>
+              </select>
+              <button
+                onClick={() => setCollectionModal("new")}
+                class="rounded-lg p-2 text-violet-300 hover:bg-zinc-800"
+                title="New collection"
+              >
+                <Plus class="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setCollectionModal("edit")}
+                disabled={!props.currentCollection}
+                class="rounded-lg p-2 text-violet-300 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                title="Collection settings"
+              >
+                <Settings class="h-4 w-4" />
+              </button>
+              <a
+                href="/admin"
+                class="rounded-lg p-2 text-violet-300 hover:bg-zinc-800"
+                title="Manage all galleries"
+                aria-label="Manage all galleries"
+              >
+                <Images class="h-4 w-4" />
+              </a>
+            </div>
+
+            <span class="hidden shrink-0 items-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-2 text-xs text-zinc-400 lg:flex">
+              <GripVertical class="h-4 w-4 text-violet-400" />
+              Click to select · drag to reorder
             </span>
-            <select
-              value={props.currentCollectionId || ""}
-              onChange={(event) => handleCollectionChange(event.currentTarget.value)}
-              class="max-w-48 rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-sm text-violet-100 focus:border-violet-500 focus:outline-none"
-              aria-label="Current collection"
-            >
-              <For each={props.collections}>
-                {(collection) => (
-                  <option value={collection.id}>{collection.name}</option>
-                )}
-              </For>
-            </select>
-            <button
-              onClick={() => setCollectionModal("new")}
-              class="rounded-lg p-2 text-violet-300 hover:bg-zinc-800"
-              title="New collection"
-            >
-              <Plus class="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setCollectionModal("edit")}
-              disabled={!props.currentCollection}
-              class="rounded-lg p-2 text-violet-300 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
-              title="Collection settings"
-            >
-              <Settings class="h-4 w-4" />
-            </button>
-            <a
-              href="/admin"
-              class="rounded-lg p-2 text-violet-300 hover:bg-zinc-800"
-              title="Manage all galleries"
-              aria-label="Manage all galleries"
-            >
-              <Images class="h-4 w-4" />
-            </a>
-          </div>
 
-          <div class="flex shrink-0 rounded-lg bg-zinc-900 p-1">
-            <button
-              onClick={() => props.onModeChange("select")}
-              class={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${
-                props.mode === "select"
-                  ? "bg-violet-600 text-white"
-                  : "text-zinc-400 hover:text-violet-200"
-              }`}
-            >
-              <CheckSquare class="h-4 w-4" />
-              Select
-            </button>
-            <button
-              onClick={() => props.onModeChange("reorder")}
-              class={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${
-                props.mode === "reorder"
-                  ? "bg-violet-600 text-white"
-                  : "text-zinc-400 hover:text-violet-200"
-              }`}
-            >
-              <GripVertical class="h-4 w-4" />
-              Reorder
-            </button>
-          </div>
-
-          <Show when={props.mode === "select"}>
             <button
               onClick={props.onSelectAll}
               disabled={props.photoCount === 0}
@@ -199,9 +180,7 @@ export function AdminGalleryOverlay(props: AdminGalleryOverlayProps) {
                 Remove
               </button>
             </Show>
-          </Show>
 
-          <Show when={props.mode === "reorder"}>
             <button
               onClick={props.onShuffle}
               disabled={props.busy || props.photoCount < 2}
@@ -210,6 +189,26 @@ export function AdminGalleryOverlay(props: AdminGalleryOverlayProps) {
               <Shuffle class="h-4 w-4" />
               Shuffle
             </button>
+            <div class="flex shrink-0 rounded-lg bg-zinc-900 p-1">
+              <button
+                onClick={props.onUndo}
+                disabled={props.busy || !props.canUndo}
+                class="rounded-md p-2 text-violet-300 hover:bg-zinc-800 disabled:text-zinc-600 disabled:hover:bg-transparent"
+                title="Undo (⌘/Ctrl+Z)"
+                aria-label="Undo"
+              >
+                <Undo2 class="h-4 w-4" />
+              </button>
+              <button
+                onClick={props.onRedo}
+                disabled={props.busy || !props.canRedo}
+                class="rounded-md p-2 text-violet-300 hover:bg-zinc-800 disabled:text-zinc-600 disabled:hover:bg-transparent"
+                title="Redo (⌘/Ctrl+Shift+Z)"
+                aria-label="Redo"
+              >
+                <Redo2 class="h-4 w-4" />
+              </button>
+            </div>
             <button
               onClick={props.onSaveOrder}
               disabled={props.busy || !props.orderChanged}
@@ -220,8 +219,6 @@ export function AdminGalleryOverlay(props: AdminGalleryOverlayProps) {
               </Show>
               {props.orderChanged ? "Save order" : "Order saved"}
             </button>
-          </Show>
-
           </div>
 
           <button
@@ -232,7 +229,6 @@ export function AdminGalleryOverlay(props: AdminGalleryOverlayProps) {
             Done
           </button>
         </div>
-
       </div>
 
       <Show when={props.message}>

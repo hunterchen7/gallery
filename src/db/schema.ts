@@ -6,6 +6,7 @@ import {
   primaryKey,
   integer,
   boolean,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -18,13 +19,22 @@ export const collections = pgTable("collections", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const photos = pgTable("photos", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  url: text("url").notNull(), // R2 filename
-  thumbnail: text("thumbnail").notNull(), // R2 thumbnail filename
-  date: timestamp("date").notNull(), // Photo date from EXIF
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export const photos = pgTable(
+  "photos",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    url: text("url").notNull(), // R2 filename
+    thumbnail: text("thumbnail").notNull(), // R2 thumbnail filename
+    contentHash: text("content_hash"), // SHA-256; null for legacy photos
+    date: timestamp("date").notNull(), // Photo date from EXIF
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    contentHashIdx: uniqueIndex("photos_content_hash_idx").on(
+      table.contentHash,
+    ),
+  }),
+);
 
 export const photoCollections = pgTable(
   "photo_collections",

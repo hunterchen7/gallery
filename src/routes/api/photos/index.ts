@@ -1,6 +1,7 @@
 import { json } from "@solidjs/router";
 import type { APIEvent } from "@solidjs/start/server";
 import { getDb, schema } from "~/db";
+import { eq } from "drizzle-orm";
 
 /**
  * GET /api/photos - Get all photos
@@ -34,7 +35,7 @@ export async function POST(event: APIEvent) {
   }
 
   const body = await event.request.json();
-  const { url, thumbnail, date, collectionIds } = body;
+  const { url, thumbnail, contentHash, date, collectionIds } = body;
 
   if (!url || !thumbnail || !date) {
     return json(
@@ -56,23 +57,57 @@ export async function POST(event: APIEvent) {
 
   const db = getDb();
 
-  // Create the photo
-  const [photo] = await db
-    .insert(schema.photos)
-    .values({
-      url,
-      thumbnail,
-      date: new Date(date),
-    })
-    .returning();
+  if (
+    typeof contentHash !== "string" ||
+    !/^[a-f0-9]{64}$/.test(contentHash)
+  ) {
+    return json(
+      { error: "A lowercase SHA-256 contentHash is required" },
+      { status: 400 },
+    );
+  }
 
-  // Associate with collections
-  await db.insert(schema.photoCollections).values(
-    collectionIds.map((collectionId: string) => ({
-      photoId: photo.id,
-      collectionId,
-    })),
-  );
+  async function associateWithCollections(photoId: string) {
+    await db
+      .insert(schema.photoCollections)
+      .values(
+        collectionIds.map((collectionId: string) => ({
+          photoId,
+          collectionId,
+        })),
+      )
+      .onConflictDoNothing();
+  }
 
-  return json(photo, { status: 201 });
+  const existingPhoto = await db.query.photos.findFirst({
+    where: eq(schema.photos.contentHash, contentHash),
+  });
+
+  if (existingPhoto) {
+    await associateWithCollections(existingPhoto.id);
+    return json({ ...existingPhoto, duplicate: true });
+  }
+
+  let photo;
+  try {
+    [photo] = await db
+      .insert(schema.photos)
+      .values({
+        url,
+        thumbnail,
+        contentHash,
+        date: new Date(date),
+      })
+      .returning();
+  } catch (error) {
+    // Concurrent uploads of the same content can race on the unique hash.
+    photo = await db.query.photos.findFirst({
+      where: eq(schema.photos.contentHash, contentHash),
+    });
+    if (!photo) throw error;
+  }
+
+  await associateWithCollections(photo.id);
+
+  return json(photo, { status: existingPhoto ? 200 : 201 });
 }

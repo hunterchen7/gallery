@@ -6,8 +6,11 @@
 export interface ProcessedImage {
   original: Blob;
   thumbnail: Blob;
+  sourceFilename: string;
   originalFilename: string;
   thumbnailFilename: string;
+  originalContentType: string;
+  contentHash: string;
   date: Date;
 }
 
@@ -110,9 +113,15 @@ async function generateThumbnail(file: File): Promise<Blob> {
  * Generate thumbnail filename from original filename
  * e.g., "HC_08466.jpg" -> "HC_08466-thumb.webp"
  */
-function getThumbnailFilename(originalFilename: string): string {
-  const baseName = originalFilename.replace(/\.[^.]+$/, "");
-  return `${baseName}-thumb.webp`;
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function calculateContentHash(file: File): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return bytesToHex(new Uint8Array(digest));
 }
 
 /**
@@ -120,16 +129,20 @@ function getThumbnailFilename(originalFilename: string): string {
  * Generates thumbnail and extracts metadata
  */
 export async function processImage(file: File): Promise<ProcessedImage> {
-  const [thumbnail, date] = await Promise.all([
+  const [thumbnail, date, contentHash] = await Promise.all([
     generateThumbnail(file),
     extractImageDate(file),
+    calculateContentHash(file),
   ]);
 
   return {
     original: file,
     thumbnail,
-    originalFilename: file.name,
-    thumbnailFilename: getThumbnailFilename(file.name),
+    sourceFilename: file.name,
+    originalFilename: `photos/${contentHash}`,
+    thumbnailFilename: `thumbnails/${contentHash}.webp`,
+    originalContentType: file.type || "application/octet-stream",
+    contentHash,
     date,
   };
 }

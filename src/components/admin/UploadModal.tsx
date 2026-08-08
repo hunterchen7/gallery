@@ -27,6 +27,7 @@ interface UploadState {
   status: UploadStatus;
   progress: number;
   error?: string;
+  wasDuplicate?: boolean;
 }
 
 export function UploadModal(props: UploadModalProps) {
@@ -135,8 +136,9 @@ export function UploadModal(props: UploadModalProps) {
           "X-Auth-Key": authKey || "",
         },
         body: JSON.stringify({
-          filename: processed.originalFilename,
-          thumbnailFilename: processed.thumbnailFilename,
+          contentHash: processed.contentHash,
+          contentType: processed.originalContentType,
+          sourceFilename: processed.sourceFilename,
         }),
       });
 
@@ -145,19 +147,26 @@ export function UploadModal(props: UploadModalProps) {
         throw new Error(data.error || "Failed to prepare upload");
       }
 
-      const { imageUrl, thumbnailUrl } = await urlRes.json();
-      await uploadToPresignedUrl(
-        imageUrl,
-        processed.original,
-        "image/jpeg",
-        (progress) => updateFile(id, { progress: progress * 0.5 }),
-      );
-      await uploadToPresignedUrl(
-        thumbnailUrl,
-        processed.thumbnail,
-        "image/webp",
-        (progress) => updateFile(id, { progress: 50 + progress * 0.5 }),
-      );
+      const uploadPlan = await urlRes.json();
+      const imageCompleteProgress = uploadPlan.imageExists ? 50 : 0;
+      if (uploadPlan.imageUrl) {
+        await uploadToPresignedUrl(
+          uploadPlan.imageUrl,
+          processed.original,
+          processed.originalContentType,
+          (progress) => updateFile(id, { progress: progress * 0.5 }),
+        );
+      } else {
+        updateFile(id, { progress: imageCompleteProgress });
+      }
+      if (uploadPlan.thumbnailUrl) {
+        await uploadToPresignedUrl(
+          uploadPlan.thumbnailUrl,
+          processed.thumbnail,
+          "image/webp",
+          (progress) => updateFile(id, { progress: 50 + progress * 0.5 }),
+        );
+      }
 
       const photoRes = await fetch("/api/photos", {
         method: "POST",
@@ -166,8 +175,12 @@ export function UploadModal(props: UploadModalProps) {
           "X-Auth-Key": authKey || "",
         },
         body: JSON.stringify({
-          url: processed.originalFilename,
-          thumbnail: processed.thumbnailFilename,
+          url: uploadPlan.photo?.url || uploadPlan.filename || processed.originalFilename,
+          thumbnail:
+            uploadPlan.photo?.thumbnail ||
+            uploadPlan.thumbnailFilename ||
+            processed.thumbnailFilename,
+          contentHash: processed.contentHash,
           date: processed.date.toISOString(),
           collectionIds,
         }),
@@ -178,7 +191,12 @@ export function UploadModal(props: UploadModalProps) {
         throw new Error(data.error || "Failed to save photo");
       }
 
-      updateFile(id, { status: "done", progress: 100 });
+      const savedPhoto = await photoRes.json();
+      updateFile(id, {
+        status: "done",
+        progress: 100,
+        wasDuplicate: uploadPlan.duplicate || savedPhoto.duplicate,
+      });
       setHasUploaded(true);
     } catch (error) {
       updateFile(id, {
@@ -382,6 +400,9 @@ export function UploadModal(props: UploadModalProps) {
                           </p>
                           <Show when={uploadState.status === "ready"}>
                             <p class="mt-1 text-xs text-amber-400">Waiting for a collection</p>
+                          </Show>
+                          <Show when={uploadState.status === "done" && uploadState.wasDuplicate}>
+                            <p class="mt-1 text-xs text-sky-400">Existing photo reused</p>
                           </Show>
                           <Show when={uploadState.error}>
                             <p class="mt-1 line-clamp-2 text-xs text-red-400">

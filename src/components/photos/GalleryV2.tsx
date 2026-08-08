@@ -71,7 +71,7 @@ export function Gallery(props: GalleryProps) {
   const [selectedPhotoIds, setSelectedPhotoIds] = createSignal<Set<string>>(
     new Set(),
   );
-  const [draggedIndex, setDraggedIndex] = createSignal<number | null>(null);
+  const [draggedPhotoId, setDraggedPhotoId] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
   const [message, setMessage] = createSignal<
     { type: "success" | "error"; text: string } | undefined
@@ -187,27 +187,43 @@ export function Gallery(props: GalleryProps) {
     setSearchParams({ edit: "1", image: undefined });
   }
 
-  function handleDragStart(index: number, event: DragEvent) {
+  function handleDragStart(photoId: string, event: DragEvent) {
     if (galleryEditMode() !== "reorder") return;
-    setDraggedIndex(index);
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+    setDraggedPhotoId(photoId);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      // Safari and Firefox will not begin a drag without a payload.
+      event.dataTransfer.setData("text/plain", photoId);
+    }
   }
 
-  function handleDragOver(index: number, event: DragEvent) {
+  function handleDragOver(targetPhotoId: string, event: DragEvent) {
     if (galleryEditMode() !== "reorder") return;
     event.preventDefault();
-    const dragged = draggedIndex();
-    if (dragged === null || dragged === index) return;
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+
+    const draggedId = draggedPhotoId();
+    if (!draggedId || draggedId === targetPhotoId) return;
 
     const reordered = [...photos()];
-    const [photo] = reordered.splice(dragged, 1);
-    reordered.splice(index, 0, photo);
+    const fromIndex = reordered.findIndex((photo) => photo.id === draggedId);
+    const toIndex = reordered.findIndex(
+      (photo) => photo.id === targetPhotoId,
+    );
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    const [photo] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, photo);
     setEditablePhotos(reordered);
-    setDraggedIndex(index);
+  }
+
+  function handleDrop(event: DragEvent) {
+    event.preventDefault();
+    setDraggedPhotoId(null);
   }
 
   function handleDragEnd() {
-    setDraggedIndex(null);
+    setDraggedPhotoId(null);
   }
 
   async function addSelectedToCollection(collectionId: string) {
@@ -381,11 +397,7 @@ export function Gallery(props: GalleryProps) {
         />
       </Show>
 
-      <div
-        class={`mx-4 mb-4 text-xs text-violet-200 transition-[padding] md:text-sm ${
-          editMode() ? "pt-52 sm:pt-36 lg:pt-20" : ""
-        }`}
-      >
+      <div class="mx-4 mb-4 text-xs text-violet-200 md:text-sm">
         <div
           class="min-h-[20px] transition-opacity duration-150"
           style={{ opacity: captionVisible() ? 1 : 0 }}
@@ -437,8 +449,9 @@ export function Gallery(props: GalleryProps) {
                     reorderMode={
                       editMode() && galleryEditMode() === "reorder"
                     }
-                    onDragStart={(event) => handleDragStart(index(), event)}
-                    onDragOver={(event) => handleDragOver(index(), event)}
+                    onDragStart={(event) => handleDragStart(photo.id, event)}
+                    onDragOver={(event) => handleDragOver(photo.id, event)}
+                    onDrop={handleDrop}
                     onDragEnd={handleDragEnd}
                   />
                 )}

@@ -14,6 +14,7 @@ interface PhotoProps {
   reorderMode?: boolean;
   onDragStart?: (event: DragEvent) => void;
   onDragOver?: (event: DragEvent) => void;
+  onDrop?: (event: DragEvent) => void;
   onDragEnd?: (event: DragEvent) => void;
 }
 
@@ -27,6 +28,7 @@ export function Photo({
   reorderMode = false,
   onDragStart,
   onDragOver,
+  onDrop,
   onDragEnd,
 }: PhotoProps) {
   const [loaded, setLoaded] = createSignal(false);
@@ -99,15 +101,16 @@ export function Photo({
       draggable={reorderMode}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
+      onDrop={onDrop}
       onDragEnd={onDragEnd}
       onClick={onClick}
-      class={`flex-grow rounded shadow-lg overflow-hidden border bg-violet-900/20 flex flex-col min-w-[135px] max-w-[600px] min-h-[135px] ${playAnimation ? "content-fade-in" : ""} transition-all ${
+      class={`relative flex-grow rounded shadow-lg overflow-hidden border bg-violet-900/20 flex flex-col min-w-[135px] max-w-[600px] min-h-[135px] ${playAnimation ? "content-fade-in" : ""} transition-[border-color,box-shadow,transform] ${
         selected
-          ? "border-violet-400 ring-4 ring-violet-500/50"
+          ? "border-violet-200 ring-4 ring-inset ring-violet-400 shadow-[0_0_28px_rgba(139,92,246,0.65)]"
           : editing
             ? "border-zinc-700 hover:border-violet-500"
             : "border-violet-700/50 hover:scale-[1.01]"
-      } ${reorderMode ? "cursor-move" : editing ? "cursor-pointer" : ""}`}
+      } ${reorderMode ? "cursor-grab select-none active:cursor-grabbing" : editing ? "cursor-pointer" : ""}`}
       style={`
   flex-basis: ${baseWidth() * aspectRatio()}px;
   ${playAnimation ? `animation-delay: ${Math.min(index * 0.08, 2)}s;` : ""}
@@ -125,21 +128,24 @@ export function Photo({
           alt="Gallery photo"
           class={`w-full h-full object-cover transition-opacity duration-300 max-h-96 max-w-[600px] ${
             loaded() ? "opacity-100" : "opacity-0"
-          } transition-transform ${editing ? "" : "hover:scale-[1.02] cursor-nesw-resize"}`}
+          } transition-transform ${reorderMode ? "pointer-events-none select-none" : editing ? "" : "hover:scale-[1.02] cursor-nesw-resize"}`}
           loading="lazy"
           draggable={false}
           onLoad={handleImageLoad}
         />
         <Show when={editing && !reorderMode}>
+          <Show when={selected}>
+            <span class="pointer-events-none absolute inset-0 bg-violet-500/20" />
+          </Show>
           <span
-            class={`absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border-2 shadow-lg ${
+            class={`pointer-events-none absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full border-2 shadow-xl ${
               selected
-                ? "border-violet-400 bg-violet-500"
+                ? "border-white bg-violet-500 ring-2 ring-violet-300/70"
                 : "border-white/70 bg-black/50"
             }`}
           >
             <Show when={selected}>
-              <Check class="h-4 w-4 text-white" />
+              <Check class="h-5 w-5 stroke-[3] text-white" />
             </Show>
           </span>
         </Show>

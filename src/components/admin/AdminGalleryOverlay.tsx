@@ -3,6 +3,7 @@ import {
   CheckSquare,
   CopyPlus,
   GripVertical,
+  Images,
   Loader2,
   Pencil,
   Plus,
@@ -75,9 +76,10 @@ export function AdminGalleryOverlay(props: AdminGalleryOverlayProps) {
 
   return (
     <>
-      <div class="fixed left-1/2 top-3 z-40 w-[calc(100vw-1rem)] max-w-6xl -translate-x-1/2 rounded-xl border border-violet-700/70 bg-zinc-950/95 p-3 text-left shadow-2xl backdrop-blur-xl">
-        <div class="flex flex-wrap items-center gap-2">
-          <div class="flex items-center gap-2 border-r border-zinc-800 pr-2">
+      <div class="fixed left-1/2 top-2 z-40 h-16 w-[calc(100vw-1rem)] max-w-6xl -translate-x-1/2 overflow-hidden rounded-xl border border-violet-700/70 bg-zinc-950/95 text-left shadow-2xl backdrop-blur-xl">
+        <div class="flex h-full min-w-0 items-center gap-2 p-2">
+          <div class="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div class="flex shrink-0 items-center gap-2 border-r border-zinc-800 pr-2">
             <span class="hidden items-center gap-2 text-sm font-medium text-violet-200 sm:flex">
               <Pencil class="h-4 w-4" />
               Edit gallery
@@ -109,9 +111,17 @@ export function AdminGalleryOverlay(props: AdminGalleryOverlayProps) {
             >
               <Settings class="h-4 w-4" />
             </button>
+            <a
+              href="/admin"
+              class="rounded-lg p-2 text-violet-300 hover:bg-zinc-800"
+              title="Manage all galleries"
+              aria-label="Manage all galleries"
+            >
+              <Images class="h-4 w-4" />
+            </a>
           </div>
 
-          <div class="flex rounded-lg bg-zinc-900 p-1">
+          <div class="flex shrink-0 rounded-lg bg-zinc-900 p-1">
             <button
               onClick={() => props.onModeChange("select")}
               class={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${
@@ -140,14 +150,14 @@ export function AdminGalleryOverlay(props: AdminGalleryOverlayProps) {
             <button
               onClick={props.onSelectAll}
               disabled={props.photoCount === 0}
-              class="rounded-lg px-3 py-2 text-sm text-violet-300 hover:bg-zinc-800 disabled:opacity-40"
+              class="w-24 shrink-0 rounded-lg px-2 py-2 text-sm text-violet-300 hover:bg-zinc-800 disabled:opacity-40"
             >
               {props.selectedCount === props.photoCount && props.photoCount > 0
                 ? "Deselect all"
                 : "Select all"}
             </button>
             <Show when={props.selectedCount > 0}>
-              <span class="text-sm text-zinc-400">
+              <span class="w-24 shrink-0 text-center text-sm text-zinc-400">
                 {props.selectedCount} selected
               </span>
               <select
@@ -204,29 +214,32 @@ export function AdminGalleryOverlay(props: AdminGalleryOverlayProps) {
             </button>
           </Show>
 
+          </div>
+
           <button
             onClick={props.onExit}
-            class="ml-auto flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
+            class="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
           >
             <X class="h-4 w-4" />
             Done
           </button>
         </div>
 
-        <Show when={props.message}>
-          {(message) => (
-            <div
-              class={`mt-2 rounded-lg px-3 py-2 text-xs ${
-                message().type === "success"
-                  ? "bg-green-500/10 text-green-300"
-                  : "bg-red-500/10 text-red-300"
-              }`}
-            >
-              {message().text}
-            </div>
-          )}
-        </Show>
       </div>
+
+      <Show when={props.message}>
+        {(message) => (
+          <div
+            class={`fixed left-1/2 top-20 z-40 max-w-[calc(100vw-1rem)] -translate-x-1/2 rounded-lg border px-3 py-2 text-xs shadow-xl backdrop-blur-xl ${
+              message().type === "success"
+                ? "border-green-500/30 bg-green-950/95 text-green-300"
+                : "border-red-500/30 bg-red-950/95 text-red-300"
+            }`}
+          >
+            {message().text}
+          </div>
+        )}
+      </Show>
 
       <Show when={collectionModal() === "new"}>
         <CollectionModal

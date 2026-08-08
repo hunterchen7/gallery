@@ -14,9 +14,9 @@ export function useCollections() {
   return {
     collections,
     collectionsLoaded,
-    async loadCollections() {
+    async loadCollections(force = false) {
       const isAdmin = getStoredAuthKey() !== null;
-      if (collectionsLoaded() && loadedForAdmin === isAdmin) return;
+      if (!force && collectionsLoaded() && loadedForAdmin === isAdmin) return;
 
       try {
         const res = await fetch("/api/collections", {

@@ -1,4 +1,11 @@
-import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import {
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { Check, ImagePlus, Loader2, RotateCcw, Upload, X } from "lucide-solid";
 import { getStoredAuthKey } from "~/lib/auth";
 import { processImage, type ProcessedImage } from "~/lib/image-processing";
@@ -8,6 +15,7 @@ import type { Collection } from "~/db/schema";
 interface UploadModalProps {
   collections: Collection[];
   defaultCollectionId?: string;
+  initialFiles?: File[];
   onClose: () => void;
   onUploadComplete: () => void;
 }
@@ -55,6 +63,10 @@ export function UploadModal(props: UploadModalProps) {
       (file) => file.status === "uploading" || file.status === "done",
     ),
   );
+
+  onMount(() => {
+    if (props.initialFiles?.length) addFiles(props.initialFiles);
+  });
 
   onCleanup(() => {
     files().forEach((file) => URL.revokeObjectURL(file.previewUrl));

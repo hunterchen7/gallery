@@ -32,6 +32,17 @@ Apply schema changes after pulling a version that updates `src/db/schema.ts`:
 npm run db:push
 ```
 
+Backfill hashes for photos uploaded before content-based deduplication. Run the
+read-only preview first, then apply the reviewed plan:
+
+```bash
+npm run backfill:hashes
+npm run backfill:hashes -- --apply
+```
+
+Duplicate database rows are consolidated, but this command never deletes R2
+objects.
+
 Build for production:
 
 ```bash

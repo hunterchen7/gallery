@@ -1,5 +1,5 @@
-import { createSignal, For, Show } from "solid-js";
-import { X, Upload, Check, Loader2 } from "lucide-solid";
+import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { Check, ImagePlus, Loader2, RotateCcw, Upload, X } from "lucide-solid";
 import { getStoredAuthKey } from "~/lib/auth";
 import { processImage, type ProcessedImage } from "~/lib/image-processing";
 import { uploadToPresignedUrl } from "~/lib/r2";
@@ -7,25 +7,57 @@ import type { Collection } from "~/db/schema";
 
 interface UploadModalProps {
   collections: Collection[];
+  defaultCollectionId?: string;
   onClose: () => void;
   onUploadComplete: () => void;
 }
 
+type UploadStatus =
+  | "processing"
+  | "ready"
+  | "uploading"
+  | "done"
+  | "error";
+
 interface UploadState {
+  id: string;
   file: File;
+  previewUrl: string;
   processed?: ProcessedImage;
-  status: "pending" | "processing" | "uploading" | "done" | "error";
+  status: UploadStatus;
   progress: number;
   error?: string;
 }
 
 export function UploadModal(props: UploadModalProps) {
+  const defaultCollections = props.defaultCollectionId
+    ? [props.defaultCollectionId]
+    : [];
   const [files, setFiles] = createSignal<UploadState[]>([]);
-  const [selectedCollections, setSelectedCollections] = createSignal<string[]>(
-    [],
-  );
-  const [uploading, setUploading] = createSignal(false);
+  const [selectedCollections, setSelectedCollections] =
+    createSignal<string[]>(defaultCollections);
   const [isDraggingOver, setIsDraggingOver] = createSignal(false);
+  const [hasUploaded, setHasUploaded] = createSignal(false);
+
+  const activeCount = createMemo(
+    () =>
+      files().filter(
+        (file) =>
+          file.status === "processing" || file.status === "uploading",
+      ).length,
+  );
+  const doneCount = createMemo(
+    () => files().filter((file) => file.status === "done").length,
+  );
+  const collectionSelectionLocked = createMemo(() =>
+    files().some(
+      (file) => file.status === "uploading" || file.status === "done",
+    ),
+  );
+
+  onCleanup(() => {
+    files().forEach((file) => URL.revokeObjectURL(file.previewUrl));
+  });
 
   function isImageFile(file: File) {
     return (
@@ -34,352 +66,372 @@ export function UploadModal(props: UploadModalProps) {
     );
   }
 
+  function updateFile(id: string, updates: Partial<UploadState>) {
+    setFiles((current) =>
+      current.map((file) => (file.id === id ? { ...file, ...updates } : file)),
+    );
+  }
+
   function addFiles(selectedFiles: File[]) {
-    const newFiles: UploadState[] = selectedFiles
+    const existingKeys = new Set(
+      files().map(
+        ({ file }) => `${file.name}:${file.size}:${file.lastModified}`,
+      ),
+    );
+    const newFiles = selectedFiles
       .filter(isImageFile)
-      .map((file) => ({
+      .filter(
+        (file) =>
+          !existingKeys.has(`${file.name}:${file.size}:${file.lastModified}`),
+      )
+      .map((file): UploadState => ({
+        id: crypto.randomUUID(),
         file,
-        status: "pending" as const,
+        previewUrl: URL.createObjectURL(file),
+        status: "processing",
         progress: 0,
       }));
 
     if (newFiles.length === 0) return;
-
-    const startIndex = files().length;
-    setFiles((prev) => [...prev, ...newFiles]);
-
-    // Process each file
-    newFiles.forEach(async (uploadState, index) => {
-      const actualIndex = startIndex + index;
-      updateFileStatus(actualIndex, "processing");
-
-      try {
-        const processed = await processImage(uploadState.file);
-        setFiles((prev) => {
-          const updated = [...prev];
-          updated[actualIndex] = {
-            ...updated[actualIndex],
-            processed,
-            status: "pending",
-          };
-          return updated;
-        });
-      } catch (error) {
-        updateFileStatus(actualIndex, "error", String(error));
-      }
-    });
+    setFiles((current) => [...current, ...newFiles]);
+    newFiles.forEach((file) => void processAndQueue(file));
   }
 
-  function handleFileSelect(e: Event) {
-    const input = e.target as HTMLInputElement;
-    if (!input.files) return;
+  async function processAndQueue(uploadState: UploadState) {
+    try {
+      const processed = await processImage(uploadState.file);
+      updateFile(uploadState.id, { processed, status: "ready" });
 
-    addFiles(Array.from(input.files));
+      const collectionIds = selectedCollections();
+      if (collectionIds.length > 0) {
+        await uploadFile(uploadState.id, processed, collectionIds);
+      }
+    } catch (error) {
+      updateFile(uploadState.id, {
+        status: "error",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  async function uploadFile(
+    id: string,
+    processed: ProcessedImage,
+    collectionIds: string[],
+  ) {
+    const current = files().find((file) => file.id === id);
+    if (!current || current.status === "uploading" || current.status === "done") {
+      return;
+    }
+
+    updateFile(id, { status: "uploading", error: undefined, progress: 0 });
+    const authKey = getStoredAuthKey();
+
+    try {
+      const urlRes = await fetch("/api/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Auth-Key": authKey || "",
+        },
+        body: JSON.stringify({
+          filename: processed.originalFilename,
+          thumbnailFilename: processed.thumbnailFilename,
+        }),
+      });
+
+      if (!urlRes.ok) {
+        const data = await urlRes.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to prepare upload");
+      }
+
+      const { imageUrl, thumbnailUrl } = await urlRes.json();
+      await uploadToPresignedUrl(
+        imageUrl,
+        processed.original,
+        "image/jpeg",
+        (progress) => updateFile(id, { progress: progress * 0.5 }),
+      );
+      await uploadToPresignedUrl(
+        thumbnailUrl,
+        processed.thumbnail,
+        "image/webp",
+        (progress) => updateFile(id, { progress: 50 + progress * 0.5 }),
+      );
+
+      const photoRes = await fetch("/api/photos", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Auth-Key": authKey || "",
+        },
+        body: JSON.stringify({
+          url: processed.originalFilename,
+          thumbnail: processed.thumbnailFilename,
+          date: processed.date.toISOString(),
+          collectionIds,
+        }),
+      });
+
+      if (!photoRes.ok) {
+        const data = await photoRes.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to save photo");
+      }
+
+      updateFile(id, { status: "done", progress: 100 });
+      setHasUploaded(true);
+    } catch (error) {
+      updateFile(id, {
+        status: "error",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  function handleFileSelect(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    if (input.files) addFiles(Array.from(input.files));
     input.value = "";
   }
 
-  function handleDragOver(e: DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.dataTransfer) {
-      e.dataTransfer.dropEffect = "copy";
-    }
+  function handleDragOver(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
     setIsDraggingOver(true);
   }
 
-  function handleDragLeave(e: DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
+  function handleDragLeave(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
     setIsDraggingOver(false);
   }
 
-  function handleDrop(e: DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
+  function handleDrop(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
     setIsDraggingOver(false);
-
-    const droppedFiles = e.dataTransfer?.files;
-    if (!droppedFiles || droppedFiles.length === 0) return;
-
-    addFiles(Array.from(droppedFiles));
-  }
-
-  function updateFileStatus(
-    index: number,
-    status: UploadState["status"],
-    error?: string,
-  ) {
-    setFiles((prev) => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], status, error };
-      return updated;
-    });
-  }
-
-  function updateFileProgress(index: number, progress: number) {
-    setFiles((prev) => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], progress };
-      return updated;
-    });
+    if (event.dataTransfer?.files) {
+      addFiles(Array.from(event.dataTransfer.files));
+    }
   }
 
   function toggleCollection(id: string) {
-    setSelectedCollections((prev) =>
-      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id],
+    if (collectionSelectionLocked()) return;
+
+    const next = selectedCollections().includes(id)
+      ? selectedCollections().filter((collectionId) => collectionId !== id)
+      : [...selectedCollections(), id];
+    setSelectedCollections(next);
+
+    if (next.length > 0) {
+      files()
+        .filter((file) => file.status === "ready" && file.processed)
+        .forEach((file) => void uploadFile(file.id, file.processed!, next));
+    }
+  }
+
+  function removeFile(id: string) {
+    const file = files().find((candidate) => candidate.id === id);
+    if (!file || file.status === "uploading") return;
+    URL.revokeObjectURL(file.previewUrl);
+    setFiles((current) => current.filter((candidate) => candidate.id !== id));
+  }
+
+  function retryFile(uploadState: UploadState) {
+    if (!uploadState.processed || selectedCollections().length === 0) return;
+    void uploadFile(
+      uploadState.id,
+      uploadState.processed,
+      selectedCollections(),
     );
   }
 
-  function removeFile(index: number) {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  async function handleUpload() {
-    if (selectedCollections().length === 0) {
-      alert("Please select at least one collection");
-      return;
-    }
-
-    const readyFiles = files().filter(
-      (f) => f.status === "pending" && f.processed,
-    );
-    if (readyFiles.length === 0) {
-      alert("No files ready to upload");
-      return;
-    }
-
-    setUploading(true);
-    const authKey = getStoredAuthKey();
-
-    for (let i = 0; i < files().length; i++) {
-      const uploadState = files()[i];
-      if (uploadState.status !== "pending" || !uploadState.processed) continue;
-
-      updateFileStatus(i, "uploading");
-
-      try {
-        const processed = uploadState.processed;
-
-        // Get presigned URLs
-        const urlRes = await fetch("/api/upload", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Auth-Key": authKey || "",
-          },
-          body: JSON.stringify({
-            filename: processed.originalFilename,
-            thumbnailFilename: processed.thumbnailFilename,
-          }),
-        });
-
-        if (!urlRes.ok) {
-          throw new Error("Failed to get upload URLs");
-        }
-
-        const { imageUrl, thumbnailUrl } = await urlRes.json();
-
-        // Upload original image
-        await uploadToPresignedUrl(
-          imageUrl,
-          processed.original,
-          "image/jpeg",
-          (progress) => updateFileProgress(i, progress * 0.5),
-        );
-
-        // Upload thumbnail
-        await uploadToPresignedUrl(
-          thumbnailUrl,
-          processed.thumbnail,
-          "image/webp",
-          (progress) => updateFileProgress(i, 50 + progress * 0.5),
-        );
-
-        // Create photo record in database
-        const photoRes = await fetch("/api/photos", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Auth-Key": authKey || "",
-          },
-          body: JSON.stringify({
-            url: processed.originalFilename,
-            thumbnail: processed.thumbnailFilename,
-            date: processed.date.toISOString(),
-            collectionIds: selectedCollections(),
-          }),
-        });
-
-        if (!photoRes.ok) {
-          throw new Error("Failed to create photo record");
-        }
-
-        updateFileStatus(i, "done");
-        updateFileProgress(i, 100);
-      } catch (error) {
-        updateFileStatus(i, "error", String(error));
-      }
-    }
-
-    setUploading(false);
-
-    // If all uploads succeeded, close the modal
-    const allDone = files().every(
-      (f) => f.status === "done" || f.status === "error",
-    );
-    if (allDone && files().some((f) => f.status === "done")) {
-      props.onUploadComplete();
-    }
+  function closeModal() {
+    if (activeCount() > 0) return;
+    if (hasUploaded()) props.onUploadComplete();
+    else props.onClose();
   }
 
   return (
-    <div class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm overflow-y-auto">
-      <div class="bg-zinc-900 border border-violet-800 rounded-lg p-6 w-full max-w-2xl mx-4 my-8 shadow-xl">
-        <div class="flex justify-between items-center mb-6">
-          <h2 class="text-xl font-medium text-violet-200">Upload Photos</h2>
-          <button onClick={props.onClose} class="p-1 hover:bg-zinc-800 rounded">
-            <X class="w-5 h-5 text-violet-400" />
-          </button>
-        </div>
-
-        {/* File input */}
-        <div class="mb-6">
-          <label
-            onDragEnter={handleDragOver}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            class={`block w-full p-8 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors ${
-              isDraggingOver()
-                ? "border-violet-400 bg-violet-950/40"
-                : "border-violet-700 hover:border-violet-500 hover:bg-zinc-800/50"
-            }`}
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-2 sm:p-4 backdrop-blur-sm">
+      <div class="flex h-[calc(100vh-1rem)] sm:h-[calc(100vh-2rem)] w-full max-w-7xl flex-col overflow-hidden rounded-xl border border-violet-800 bg-zinc-900 shadow-2xl">
+        <header class="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
+          <div>
+            <h2 class="text-xl font-medium text-violet-200">Upload Photos</h2>
+            <p class="mt-0.5 text-xs text-zinc-500">
+              Photos upload automatically as soon as they are ready.
+            </p>
+          </div>
+          <button
+            onClick={closeModal}
+            disabled={activeCount() > 0}
+            class="rounded p-2 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+            title={activeCount() > 0 ? "Wait for active uploads to finish" : "Close"}
           >
-            <Upload class="w-8 h-8 mx-auto mb-2 text-violet-400" />
-            <span class="text-violet-300">
-              Click to select images or drag and drop
-            </span>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={handleFileSelect}
-              class="hidden"
-            />
-          </label>
-        </div>
+            <X class="h-5 w-5 text-violet-400" />
+          </button>
+        </header>
 
-        {/* Selected files */}
-        <Show when={files().length > 0}>
-          <div class="mb-6 max-h-48 overflow-y-auto">
-            <h3 class="text-sm font-medium text-violet-400 mb-2">
-              Selected Files ({files().length})
+        <div class="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[18rem_1fr]">
+          <aside class="border-b border-zinc-800 p-4 lg:border-b-0 lg:border-r">
+            <h3 class="mb-2 text-sm font-medium text-violet-400">
+              Add to collections
             </h3>
-            <div class="space-y-2">
-              <For each={files()}>
-                {(uploadState, index) => (
-                  <div class="flex items-center gap-3 bg-zinc-800 rounded p-2">
-                    <div class="flex-1 min-w-0">
-                      <p class="text-sm text-violet-200 truncate">
-                        {uploadState.file.name}
-                      </p>
-                      <Show when={uploadState.status === "uploading"}>
-                        <div class="w-full bg-zinc-700 rounded-full h-1 mt-1">
-                          <div
-                            class="bg-violet-500 h-1 rounded-full transition-all"
-                            style={{ width: `${uploadState.progress}%` }}
-                          />
-                        </div>
-                      </Show>
-                      <Show when={uploadState.error}>
-                        <p class="text-xs text-red-400 mt-1">
-                          {uploadState.error}
-                        </p>
-                      </Show>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <Show when={uploadState.status === "processing"}>
-                        <Loader2 class="w-4 h-4 text-violet-400 animate-spin" />
-                      </Show>
-                      <Show when={uploadState.status === "done"}>
-                        <Check class="w-4 h-4 text-green-400" />
-                      </Show>
-                      <Show
-                        when={
-                          uploadState.status === "pending" ||
-                          uploadState.status === "error"
-                        }
-                      >
-                        <button
-                          onClick={() => removeFile(index())}
-                          class="p-1 hover:bg-zinc-700 rounded"
-                        >
-                          <X class="w-4 h-4 text-violet-400" />
-                        </button>
-                      </Show>
-                    </div>
-                  </div>
+            <p class="mb-3 text-xs text-zinc-500">
+              Choose before selecting photos. The selection locks once uploading starts.
+            </p>
+            <div class="flex max-h-28 flex-wrap gap-2 overflow-y-auto lg:max-h-[calc(100vh-14rem)] lg:flex-col lg:flex-nowrap">
+              <For each={props.collections}>
+                {(collection) => (
+                  <button
+                    onClick={() => toggleCollection(collection.id)}
+                    disabled={collectionSelectionLocked()}
+                    class={`rounded-lg px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed ${
+                      selectedCollections().includes(collection.id)
+                        ? "bg-violet-600 text-white"
+                        : "bg-zinc-800 text-violet-300 hover:bg-zinc-700"
+                    }`}
+                  >
+                    {collection.name}
+                  </button>
                 )}
               </For>
             </div>
-          </div>
-        </Show>
-
-        {/* Collection selection */}
-        <div class="mb-6">
-          <h3 class="text-sm font-medium text-violet-400 mb-2">
-            Add to Collections
-          </h3>
-          <div class="flex flex-wrap gap-2">
-            <For each={props.collections}>
-              {(collection) => (
-                <button
-                  onClick={() => toggleCollection(collection.id)}
-                  class={`px-3 py-1 rounded-full text-sm transition-colors ${
-                    selectedCollections().includes(collection.id)
-                      ? "bg-violet-600 text-white"
-                      : "bg-zinc-800 text-violet-300 hover:bg-zinc-700"
-                  }`}
-                >
-                  {collection.name}
-                </button>
-              )}
-            </For>
-          </div>
-          <Show when={props.collections.length === 0}>
-            <p class="text-sm text-zinc-500">
-              No collections yet.{" "}
-              <a href="/admin" class="text-violet-400 underline">
-                Create one first
-              </a>
-            </p>
-          </Show>
-        </div>
-
-        {/* Upload button */}
-        <div class="flex justify-end gap-3">
-          <button
-            onClick={props.onClose}
-            class="px-4 py-2 text-violet-300 hover:text-violet-200"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleUpload}
-            disabled={
-              uploading() ||
-              files().filter((f) => f.status === "pending" && f.processed)
-                .length === 0 ||
-              selectedCollections().length === 0
-            }
-            class="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-800 disabled:cursor-not-allowed rounded text-white font-medium transition-colors flex items-center gap-2"
-          >
-            <Show when={uploading()}>
-              <Loader2 class="w-4 h-4 animate-spin" />
+            <Show when={selectedCollections().length === 0}>
+              <p class="mt-3 text-xs text-amber-400">
+                Select at least one collection to start uploads.
+              </p>
             </Show>
-            {uploading() ? "Uploading..." : "Upload"}
-          </button>
+          </aside>
+
+          <section class="flex min-h-0 flex-col p-4">
+            <label
+              onDragEnter={handleDragOver}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              class={`mb-4 flex shrink-0 cursor-pointer items-center justify-center gap-3 rounded-lg border-2 border-dashed px-5 py-5 transition-colors ${
+                isDraggingOver()
+                  ? "border-violet-400 bg-violet-950/40"
+                  : "border-violet-700 hover:border-violet-500 hover:bg-zinc-800/50"
+              }`}
+            >
+              <Upload class="h-6 w-6 text-violet-400" />
+              <span class="text-sm text-violet-300">
+                Select images or drag and drop more at any time
+              </span>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFileSelect}
+                class="hidden"
+              />
+            </label>
+
+            <div class="min-h-0 flex-1 overflow-y-auto pr-1">
+              <Show
+                when={files().length > 0}
+                fallback={
+                  <div class="flex h-full min-h-52 flex-col items-center justify-center text-zinc-600">
+                    <ImagePlus class="mb-3 h-12 w-12" />
+                    <p>No photos selected yet</p>
+                  </div>
+                }
+              >
+                <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                  <For each={files()}>
+                    {(uploadState) => (
+                      <article class="group relative overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950">
+                        <div class="relative aspect-square bg-zinc-800">
+                          <img
+                            src={uploadState.previewUrl}
+                            alt={uploadState.file.name}
+                            class="h-full w-full object-cover"
+                          />
+                          <div class="absolute inset-x-0 bottom-0 h-1.5 bg-zinc-800/90">
+                            <div
+                              class={`h-full transition-all ${
+                                uploadState.status === "error"
+                                  ? "bg-red-500"
+                                  : uploadState.status === "done"
+                                    ? "bg-green-500"
+                                    : "bg-violet-500"
+                              }`}
+                              style={{ width: `${uploadState.progress}%` }}
+                            />
+                          </div>
+                          <div class="absolute right-2 top-2 rounded-full bg-zinc-950/80 p-1.5 backdrop-blur-sm">
+                            <Show when={uploadState.status === "processing"}>
+                              <Loader2 class="h-4 w-4 animate-spin text-violet-300" />
+                            </Show>
+                            <Show when={uploadState.status === "uploading"}>
+                              <span class="block min-w-7 text-center text-xs text-violet-200">
+                                {Math.round(uploadState.progress)}%
+                              </span>
+                            </Show>
+                            <Show when={uploadState.status === "done"}>
+                              <Check class="h-4 w-4 text-green-400" />
+                            </Show>
+                          </div>
+                        </div>
+                        <div class="p-2.5">
+                          <p class="truncate text-xs text-violet-200" title={uploadState.file.name}>
+                            {uploadState.file.name}
+                          </p>
+                          <Show when={uploadState.status === "ready"}>
+                            <p class="mt-1 text-xs text-amber-400">Waiting for a collection</p>
+                          </Show>
+                          <Show when={uploadState.error}>
+                            <p class="mt-1 line-clamp-2 text-xs text-red-400">
+                              {uploadState.error}
+                            </p>
+                          </Show>
+                          <div class="mt-2 flex justify-end gap-1">
+                            <Show when={uploadState.status === "error"}>
+                              <button
+                                onClick={() => retryFile(uploadState)}
+                                disabled={selectedCollections().length === 0}
+                                class="rounded p-1 text-violet-400 hover:bg-zinc-800 disabled:opacity-40"
+                                title="Retry"
+                              >
+                                <RotateCcw class="h-4 w-4" />
+                              </button>
+                            </Show>
+                            <Show when={uploadState.status !== "uploading"}>
+                              <button
+                                onClick={() => removeFile(uploadState.id)}
+                                class="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-red-400"
+                                title="Remove"
+                              >
+                                <X class="h-4 w-4" />
+                              </button>
+                            </Show>
+                          </div>
+                        </div>
+                      </article>
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </div>
+          </section>
         </div>
+
+        <footer class="flex items-center justify-between border-t border-zinc-800 px-5 py-3 text-sm">
+          <span class="text-zinc-500">
+            {doneCount()} of {files().length} uploaded
+            <Show when={activeCount() > 0}> · {activeCount()} active</Show>
+          </span>
+          <button
+            onClick={closeModal}
+            disabled={activeCount() > 0}
+            class="rounded bg-violet-600 px-4 py-2 font-medium text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-violet-800"
+          >
+            {activeCount() > 0 ? "Uploading…" : hasUploaded() ? "Done" : "Cancel"}
+          </button>
+        </footer>
       </div>
     </div>
   );

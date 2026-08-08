@@ -61,6 +61,7 @@ function GalleryShell(props: GalleryShellProps) {
       <Show when={isAdmin() && collections()}>
         <UploadButton
           collections={collections() || []}
+          defaultCollectionId={props.currentCollectionId}
           onUploadComplete={handleUploadComplete}
         />
       </Show>

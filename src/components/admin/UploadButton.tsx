@@ -5,6 +5,7 @@ import type { Collection } from "~/db/schema";
 
 interface UploadButtonProps {
   collections: Collection[];
+  defaultCollectionId?: string;
   onUploadComplete: () => void;
 }
 
@@ -25,6 +26,7 @@ export function UploadButton(props: UploadButtonProps) {
       <Show when={showModal()}>
         <UploadModal
           collections={props.collections}
+          defaultCollectionId={props.defaultCollectionId}
           onClose={() => setShowModal(false)}
           onUploadComplete={() => {
             setShowModal(false);

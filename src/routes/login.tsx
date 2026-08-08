@@ -81,7 +81,13 @@ export default function LoginPage() {
               <div class="text-green-500 text-6xl mb-4">✓</div>
               <h1 class="text-2xl font-bold text-white mb-4">Logged In</h1>
               <p class="text-zinc-400 mb-6">You have admin access.</p>
-              <div class="flex gap-4 justify-center">
+              <div class="flex flex-wrap gap-3 justify-center">
+                <button
+                  onClick={() => navigate("/admin")}
+                  class="px-6 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors"
+                >
+                  Manage galleries
+                </button>
                 <button
                   onClick={() => navigate("/?edit=1")}
                   class="px-6 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg transition-colors"

@@ -7,7 +7,7 @@ import {
   Show,
 } from "solid-js";
 import { A, useSearchParams } from "@solidjs/router";
-import { Pencil } from "lucide-solid";
+import { Images, Pencil } from "lucide-solid";
 import { Photo as PhotoComponent } from "~/components/photos/Photo";
 import { Carousel } from "~/components/photos/Carousel";
 import { getStoredAuthKey, isAuthenticated } from "~/lib/auth";
@@ -366,13 +366,22 @@ export function Gallery(props: GalleryProps) {
           onUploadComplete={() => window.location.reload()}
         />
         <Show when={!editMode()}>
-          <button
-            onClick={enterEditMode}
-            class="fixed right-4 top-4 z-40 flex items-center gap-2 rounded-full bg-zinc-900/90 px-4 py-2 text-sm font-medium text-violet-200 shadow-lg backdrop-blur-sm transition-colors hover:bg-violet-600 hover:text-white"
-          >
-            <Pencil class="h-4 w-4" />
-            Edit
-          </button>
+          <div class="fixed right-4 top-4 z-40 flex items-center gap-2">
+            <a
+              href="/admin"
+              class="flex items-center gap-2 rounded-full bg-zinc-900/90 px-3 py-2 text-sm font-medium text-violet-200 shadow-lg backdrop-blur-sm transition-colors hover:bg-violet-600 hover:text-white sm:px-4"
+            >
+              <Images class="h-4 w-4" />
+              <span class="hidden sm:inline">Galleries</span>
+            </a>
+            <button
+              onClick={enterEditMode}
+              class="flex items-center gap-2 rounded-full bg-zinc-900/90 px-3 py-2 text-sm font-medium text-violet-200 shadow-lg backdrop-blur-sm transition-colors hover:bg-violet-600 hover:text-white sm:px-4"
+            >
+              <Pencil class="h-4 w-4" />
+              Edit
+            </button>
+          </div>
         </Show>
       </Show>
 

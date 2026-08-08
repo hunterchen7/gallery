@@ -4,7 +4,10 @@ import { getStoredAuthKey } from "~/lib/auth";
 import type { Collection } from "~/db/schema";
 
 interface CollectionModalProps {
-  collection?: Collection; // If provided, we're editing; otherwise creating
+  collection?: Pick<
+    Collection,
+    "id" | "name" | "description" | "isPrivate"
+  >; // If provided, we're editing; otherwise creating
   onClose: () => void;
   onSave: () => void;
 }

@@ -2,18 +2,33 @@ import { createSignal, Show, onMount, onCleanup } from "solid-js";
 import { type GalleryPhoto, S3_PREFIX } from "~/types/photo";
 import { LoadingSpinner } from "../LoadingSpinner";
 import { formatDate } from "~/utils/date";
+import { Check, GripVertical } from "lucide-solid";
+
+interface PhotoProps {
+  photo: GalleryPhoto;
+  onClick: () => void;
+  index: number;
+  playAnimation?: boolean;
+  editing?: boolean;
+  selected?: boolean;
+  reorderMode?: boolean;
+  onDragStart?: (event: DragEvent) => void;
+  onDragOver?: (event: DragEvent) => void;
+  onDragEnd?: (event: DragEvent) => void;
+}
 
 export function Photo({
   photo,
   onClick,
   index,
   playAnimation = true,
-}: {
-  photo: GalleryPhoto;
-  onClick: () => void;
-  index: number;
-  playAnimation?: boolean;
-}) {
+  editing = false,
+  selected = false,
+  reorderMode = false,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
+}: PhotoProps) {
   const [loaded, setLoaded] = createSignal(false);
   const [aspectRatio, setAspectRatio] = createSignal(1); // Default aspect ratio
   const [baseWidth, setBaseWidth] = createSignal(300); // Default base width
@@ -81,7 +96,18 @@ export function Photo({
 
   return (
     <div
-      class={`flex-grow rounded shadow-lg overflow-hidden border border-violet-700/50 bg-violet-900/20 flex flex-col min-w-[135px] max-w-[600px] min-h-[135px] ${playAnimation ? "content-fade-in" : ""} hover:scale-[1.01] transition-transform`}
+      draggable={reorderMode}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragEnd={onDragEnd}
+      onClick={onClick}
+      class={`flex-grow rounded shadow-lg overflow-hidden border bg-violet-900/20 flex flex-col min-w-[135px] max-w-[600px] min-h-[135px] ${playAnimation ? "content-fade-in" : ""} transition-all ${
+        selected
+          ? "border-violet-400 ring-4 ring-violet-500/50"
+          : editing
+            ? "border-zinc-700 hover:border-violet-500"
+            : "border-violet-700/50 hover:scale-[1.01]"
+      } ${reorderMode ? "cursor-move" : editing ? "cursor-pointer" : ""}`}
       style={`
   flex-basis: ${baseWidth() * aspectRatio()}px;
   ${playAnimation ? `animation-delay: ${Math.min(index * 0.08, 2)}s;` : ""}
@@ -99,12 +125,30 @@ export function Photo({
           alt="Gallery photo"
           class={`w-full h-full object-cover transition-opacity duration-300 max-h-96 max-w-[600px] ${
             loaded() ? "opacity-100" : "opacity-0"
-          } hover:scale-[1.02] transition-transform cursor-nesw-resize`}
+          } transition-transform ${editing ? "" : "hover:scale-[1.02] cursor-nesw-resize"}`}
           loading="lazy"
-          draggable="true"
+          draggable={false}
           onLoad={handleImageLoad}
-          onClick={onClick}
         />
+        <Show when={editing && !reorderMode}>
+          <span
+            class={`absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border-2 shadow-lg ${
+              selected
+                ? "border-violet-400 bg-violet-500"
+                : "border-white/70 bg-black/50"
+            }`}
+          >
+            <Show when={selected}>
+              <Check class="h-4 w-4 text-white" />
+            </Show>
+          </span>
+        </Show>
+        <Show when={reorderMode}>
+          <span class="absolute left-2 top-2 flex items-center gap-1 rounded-md bg-black/70 px-2 py-1 text-xs text-white shadow-lg">
+            <GripVertical class="h-3.5 w-3.5" />
+            {index + 1}
+          </span>
+        </Show>
       </div>
       <div class="p-1 flex-shrink-0">
         <span class="text-xs text-violet-300 font-mono inline cursor-text">

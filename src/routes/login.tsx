@@ -83,10 +83,10 @@ export default function LoginPage() {
               <p class="text-zinc-400 mb-6">You have admin access.</p>
               <div class="flex gap-4 justify-center">
                 <button
-                  onClick={() => navigate("/")}
+                  onClick={() => navigate("/?edit=1")}
                   class="px-6 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg transition-colors"
                 >
-                  Go to Gallery
+                  Open gallery editor
                 </button>
                 <button
                   onClick={handleLogout}

@@ -4,6 +4,7 @@
  */
 
 export interface GalleryPhoto {
+  id: string;
   url: string;
   thumbnail: string;
   date: string;

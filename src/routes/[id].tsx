@@ -8,6 +8,7 @@ interface CollectionWithPhotos {
   id: string;
   name: string;
   description: string | null;
+  isPrivate: boolean;
   photos: Array<{
     id: string;
     url: string;
@@ -29,6 +30,7 @@ export default function CollectionPage() {
     const data = collection();
     if (!data?.photos) return [];
     return data.photos.map((p) => ({
+      id: p.id,
       url: p.url,
       thumbnail: p.thumbnail,
       date: p.date,
@@ -114,6 +116,7 @@ export default function CollectionPage() {
           </Show>
         }
         currentCollectionId={collection()?.id}
+        currentCollection={collection() || undefined}
         loading={loading()}
       />
     </>

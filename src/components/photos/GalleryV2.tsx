@@ -1,10 +1,22 @@
-import { createSignal, Show, JSX, onMount, For, createEffect } from "solid-js";
-import { useSearchParams, A } from "@solidjs/router";
+import {
+  createEffect,
+  createSignal,
+  For,
+  type JSX,
+  onMount,
+  Show,
+} from "solid-js";
+import { A, useSearchParams } from "@solidjs/router";
+import { Pencil } from "lucide-solid";
 import { Photo as PhotoComponent } from "~/components/photos/Photo";
 import { Carousel } from "~/components/photos/Carousel";
-import { isAuthenticated } from "~/lib/auth";
+import { getStoredAuthKey, isAuthenticated } from "~/lib/auth";
 import { UploadButton } from "~/components/admin/UploadButton";
-import type { Collection } from "~/db/schema";
+import {
+  AdminGalleryOverlay,
+  type EditableCollection,
+  type GalleryEditMode,
+} from "~/components/admin/AdminGalleryOverlay";
 import { type GalleryPhoto } from "~/types/photo";
 import { useCollections, shouldPlayAnimations } from "~/lib/galleryStore";
 
@@ -14,84 +26,34 @@ export interface GalleryProps {
   photos: GalleryPhoto[];
   caption: JSX.Element;
   currentCollectionId?: string;
+  currentCollection?: EditableCollection;
   loading?: boolean;
 }
 
-interface GalleryShellProps {
-  children: JSX.Element;
-}
-
-function GalleryShell(props: GalleryShellProps) {
-  const [isAdmin, setIsAdmin] = createSignal(false);
-  const { collections, collectionsLoaded, loadCollections } = useCollections();
-
-  onMount(async () => {
-    setIsAdmin(isAuthenticated());
-    await loadCollections();
-  });
-
-  function handleUploadComplete() {
-    window.location.reload();
-  }
-
+function GalleryShell(props: { children: JSX.Element }) {
   return (
-    <main class="text-center mx-auto font-mono text-violet-200 pb-20">
-      <Show when={isAdmin()}>
-        <a
-          href="/admin"
-          class="fixed top-4 right-4 z-50 p-2 bg-zinc-800/80 hover:bg-zinc-700 rounded-full text-zinc-400 hover:text-white transition-colors backdrop-blur-sm"
-          title="Admin"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="w-5 h-5"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </a>
-      </Show>
-
-      <Show when={isAdmin() && collections()}>
-        <UploadButton
-          collections={collections() || []}
-          defaultCollectionId={props.currentCollectionId}
-          onUploadComplete={handleUploadComplete}
-        />
-      </Show>
-
-      <h1 class="text-2xl sm:text-4xl font-thin leading-tight mt-2 md:mt-12 mb-8 mx-auto max-w-[14rem] md:max-w-none">
+    <main class="mx-auto pb-20 text-center font-mono text-violet-200">
+      <h1 class="mx-auto mb-8 mt-2 max-w-[14rem] text-2xl font-thin leading-tight sm:text-4xl md:mt-12 md:max-w-none">
         gallery
       </h1>
-
       {props.children}
     </main>
   );
 }
 
-function CollectionLink({
-  href,
-  children,
-  active,
-}: {
+function CollectionLink(props: {
   href: string;
   children: JSX.Element;
   active?: boolean;
 }) {
   return (
     <A
-      href={href}
+      href={props.href}
       class={`underline hover:text-violet-300 ${
-        active ? "text-violet-200 font-medium" : "text-violet-400"
+        props.active ? "font-medium text-violet-200" : "text-violet-400"
       }`}
     >
-      {children}
+      {props.children}
     </A>
   );
 }
@@ -99,47 +61,331 @@ function CollectionLink({
 export function Gallery(props: GalleryProps) {
   const [expandedIndex, setExpandedIndex] = createSignal<number | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  const { collections, collectionsLoaded } = useCollections();
+  const { collections, collectionsLoaded, loadCollections } = useCollections();
+  const [isAdmin, setIsAdmin] = createSignal(false);
+  const [editMode, setEditMode] = createSignal(false);
+  const [galleryEditMode, setGalleryEditMode] =
+    createSignal<GalleryEditMode>("select");
+  const [editablePhotos, setEditablePhotos] = createSignal<GalleryPhoto[]>([]);
+  const [originalOrder, setOriginalOrder] = createSignal<string[]>([]);
+  const [selectedPhotoIds, setSelectedPhotoIds] = createSignal<Set<string>>(
+    new Set(),
+  );
+  const [draggedIndex, setDraggedIndex] = createSignal<number | null>(null);
+  const [busy, setBusy] = createSignal(false);
+  const [message, setMessage] = createSignal<
+    { type: "success" | "error"; text: string } | undefined
+  >();
   const [playAnimations] = createSignal(
     shouldPlayAnimations(props.currentCollectionId),
   );
   const [captionVisible, setCaptionVisible] = createSignal(true);
 
-  const photos = () => props.photos;
+  const photos = () => editablePhotos();
+  const orderChanged = () => {
+    const current = photos().map((photo) => photo.id);
+    const original = originalOrder();
+    return (
+      current.length !== original.length ||
+      current.some((photoId, index) => photoId !== original[index])
+    );
+  };
 
-  onMount(() => {
-    const imageParam = searchParams.image;
-    if (imageParam) {
-      const photoIndex = photos().findIndex((p) => p.url === imageParam);
-      if (photoIndex !== -1) {
-        setExpandedIndex(photoIndex);
-      }
-    }
+  createEffect(() => {
+    const nextPhotos = props.photos;
+    setEditablePhotos([...nextPhotos]);
+    setOriginalOrder(nextPhotos.map((photo) => photo.id));
   });
 
-  // Fade caption when it changes
   createEffect(() => {
-    const _ = props.caption; // Track caption changes
+    const _ = props.caption;
     setCaptionVisible(false);
     setTimeout(() => setCaptionVisible(true), 250);
   });
 
-  const updateUrlWithImage = (index: number | null) => {
+  onMount(async () => {
+    const authenticated = isAuthenticated();
+    setIsAdmin(authenticated);
+    await loadCollections();
+
+    if (authenticated && searchParams.edit === "1") {
+      setEditMode(true);
+      if (searchParams.mode === "reorder") setGalleryEditMode("reorder");
+    }
+
+    const imageParam = searchParams.image;
+    if (searchParams.edit !== "1" && imageParam) {
+      const photoIndex = photos().findIndex((photo) => photo.url === imageParam);
+      if (photoIndex !== -1) setExpandedIndex(photoIndex);
+    }
+  });
+
+  function updateUrlWithImage(index: number | null) {
     if (index !== null && photos()[index]) {
       setSearchParams({ image: photos()[index].url });
     } else {
       setSearchParams({ image: undefined });
     }
-  };
+  }
 
-  const setExpandedIndexWithUrl = (index: number | null) => {
+  function setExpandedIndexWithUrl(index: number | null) {
     setExpandedIndex(index);
     updateUrlWithImage(index);
-  };
+  }
+
+  function togglePhoto(photoId: string) {
+    const selected = new Set(selectedPhotoIds());
+    if (selected.has(photoId)) selected.delete(photoId);
+    else selected.add(photoId);
+    setSelectedPhotoIds(selected);
+  }
+
+  function handlePhotoClick(photo: GalleryPhoto, index: number) {
+    if (!editMode()) {
+      setExpandedIndexWithUrl(index);
+      return;
+    }
+    if (galleryEditMode() === "select") togglePhoto(photo.id);
+  }
+
+  function handleSelectAll() {
+    if (selectedPhotoIds().size === photos().length) {
+      setSelectedPhotoIds(new Set<string>());
+    } else {
+      setSelectedPhotoIds(new Set(photos().map((photo) => photo.id)));
+    }
+  }
+
+  function handleModeChange(mode: GalleryEditMode) {
+    setGalleryEditMode(mode);
+    setSearchParams({ mode: mode === "reorder" ? "reorder" : undefined });
+    setSelectedPhotoIds(new Set<string>());
+    setMessage(undefined);
+  }
+
+  function restoreOriginalOrder() {
+    const byId = new Map(photos().map((photo) => [photo.id, photo]));
+    const restored = originalOrder()
+      .map((photoId) => byId.get(photoId))
+      .filter((photo): photo is GalleryPhoto => Boolean(photo));
+    setEditablePhotos(restored);
+  }
+
+  function exitEditMode() {
+    if (orderChanged() && !confirm("Discard your unsaved photo order?")) return;
+    if (orderChanged()) restoreOriginalOrder();
+    setSelectedPhotoIds(new Set<string>());
+    setGalleryEditMode("select");
+    setMessage(undefined);
+    setEditMode(false);
+    setSearchParams({ edit: undefined, mode: undefined });
+  }
+
+  function enterEditMode() {
+    setExpandedIndexWithUrl(null);
+    setEditMode(true);
+    setSearchParams({ edit: "1", image: undefined });
+  }
+
+  function handleDragStart(index: number, event: DragEvent) {
+    if (galleryEditMode() !== "reorder") return;
+    setDraggedIndex(index);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+  }
+
+  function handleDragOver(index: number, event: DragEvent) {
+    if (galleryEditMode() !== "reorder") return;
+    event.preventDefault();
+    const dragged = draggedIndex();
+    if (dragged === null || dragged === index) return;
+
+    const reordered = [...photos()];
+    const [photo] = reordered.splice(dragged, 1);
+    reordered.splice(index, 0, photo);
+    setEditablePhotos(reordered);
+    setDraggedIndex(index);
+  }
+
+  function handleDragEnd() {
+    setDraggedIndex(null);
+  }
+
+  async function addSelectedToCollection(collectionId: string) {
+    const photoIds = [...selectedPhotoIds()];
+    if (!collectionId || photoIds.length === 0) return;
+    setBusy(true);
+    setMessage(undefined);
+    try {
+      const response = await fetch(`/api/collections/${collectionId}/photos`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Auth-Key": getStoredAuthKey() || "",
+        },
+        body: JSON.stringify({ photoIds }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to add photos");
+
+      const targetName = collections().find(
+        (collection) => collection.id === collectionId,
+      )?.name;
+      setMessage({
+        type: "success",
+        text: `${result.added} photo(s) added to ${targetName || collectionId}${
+          result.alreadyPresent
+            ? ` · ${result.alreadyPresent} already present`
+            : ""
+        }`,
+      });
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Failed to add photos",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeSelectedFromCollection() {
+    const collectionId = props.currentCollectionId;
+    const photoIds = [...selectedPhotoIds()];
+    if (!collectionId || photoIds.length === 0) return;
+    if (
+      !confirm(
+        `Remove ${photoIds.length} photo(s) from this collection? The original files will remain in R2.`,
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    setMessage(undefined);
+    const removed = new Set<string>();
+    try {
+      for (const photoId of photoIds) {
+        const response = await fetch(
+          `/api/photos/${photoId}/collections/${collectionId}`,
+          {
+            method: "DELETE",
+            headers: { "X-Auth-Key": getStoredAuthKey() || "" },
+          },
+        );
+        if (response.ok) removed.add(photoId);
+      }
+
+      setEditablePhotos((current) =>
+        current.filter((photo) => !removed.has(photo.id)),
+      );
+      setOriginalOrder((current) =>
+        current.filter((photoId) => !removed.has(photoId)),
+      );
+      setSelectedPhotoIds(new Set<string>());
+      setMessage({
+        type: removed.size === photoIds.length ? "success" : "error",
+        text:
+          removed.size === photoIds.length
+            ? `${removed.size} photo(s) removed from this collection`
+            : `Removed ${removed.size} of ${photoIds.length} photo(s)`,
+      });
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Failed to remove selected photos",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveOrder() {
+    const collectionId = props.currentCollectionId;
+    if (!collectionId || !orderChanged()) return;
+    setBusy(true);
+    setMessage(undefined);
+    try {
+      const photoIds = photos().map((photo) => photo.id);
+      const response = await fetch(`/api/collections/${collectionId}/reorder`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Auth-Key": getStoredAuthKey() || "",
+        },
+        body: JSON.stringify({ photoIds }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to save order");
+      setOriginalOrder(photoIds);
+      setMessage({ type: "success", text: "Photo order saved" });
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Failed to save order",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function shufflePhotos() {
+    const shuffled = [...photos()];
+    for (let index = shuffled.length - 1; index > 0; index--) {
+      const other = Math.floor(Math.random() * (index + 1));
+      [shuffled[index], shuffled[other]] = [shuffled[other], shuffled[index]];
+    }
+    setEditablePhotos(shuffled);
+    setMessage(undefined);
+  }
 
   return (
     <GalleryShell>
-      <div class="text-violet-200 mb-4 text-xs md:text-sm mx-4">
+      <Show when={isAdmin() && collectionsLoaded()}>
+        <UploadButton
+          collections={collections()}
+          defaultCollectionId={props.currentCollectionId}
+          onUploadComplete={() => window.location.reload()}
+        />
+        <Show when={!editMode()}>
+          <button
+            onClick={enterEditMode}
+            class="fixed right-4 top-4 z-40 flex items-center gap-2 rounded-full bg-zinc-900/90 px-4 py-2 text-sm font-medium text-violet-200 shadow-lg backdrop-blur-sm transition-colors hover:bg-violet-600 hover:text-white"
+          >
+            <Pencil class="h-4 w-4" />
+            Edit
+          </button>
+        </Show>
+      </Show>
+
+      <Show when={isAdmin() && editMode()}>
+        <AdminGalleryOverlay
+          collections={collections()}
+          currentCollection={props.currentCollection}
+          currentCollectionId={props.currentCollectionId}
+          mode={galleryEditMode()}
+          photoCount={photos().length}
+          selectedCount={selectedPhotoIds().size}
+          orderChanged={orderChanged()}
+          busy={busy()}
+          message={message()}
+          onExit={exitEditMode}
+          onModeChange={handleModeChange}
+          onSelectAll={handleSelectAll}
+          onAddToCollection={addSelectedToCollection}
+          onRemoveFromCollection={removeSelectedFromCollection}
+          onSaveOrder={saveOrder}
+          onShuffle={shufflePhotos}
+        />
+      </Show>
+
+      <div
+        class={`mx-4 mb-4 text-xs text-violet-200 transition-[padding] md:text-sm ${
+          editMode() ? "pt-52 sm:pt-36 lg:pt-20" : ""
+        }`}
+      >
         <div
           class="min-h-[20px] transition-opacity duration-150"
           style={{ opacity: captionVisible() ? 1 : 0 }}
@@ -168,12 +414,13 @@ export function Gallery(props: GalleryProps) {
             </For>
           </Show>
         </div>
+
         <div class="w-fill p-1 sm:p-2 md:p-4">
           <Show
             when={!props.loading}
             fallback={
-              <div class="flex justify-center items-center min-h-[300px]">
-                <div class="text-violet-400 text-sm">Loading...</div>
+              <div class="flex min-h-[300px] items-center justify-center">
+                <div class="text-sm text-violet-400">Loading...</div>
               </div>
             }
           >
@@ -183,8 +430,16 @@ export function Gallery(props: GalleryProps) {
                   <PhotoComponent
                     photo={photo}
                     index={index()}
-                    onClick={() => setExpandedIndexWithUrl(index())}
-                    playAnimation={playAnimations()}
+                    onClick={() => handlePhotoClick(photo, index())}
+                    playAnimation={playAnimations() && !editMode()}
+                    editing={editMode()}
+                    selected={selectedPhotoIds().has(photo.id)}
+                    reorderMode={
+                      editMode() && galleryEditMode() === "reorder"
+                    }
+                    onDragStart={(event) => handleDragStart(index(), event)}
+                    onDragOver={(event) => handleDragOver(index(), event)}
+                    onDragEnd={handleDragEnd}
                   />
                 )}
               </For>
@@ -192,7 +447,7 @@ export function Gallery(props: GalleryProps) {
           </Show>
         </div>
 
-        <Show when={expandedIndex() !== null}>
+        <Show when={!editMode() && expandedIndex() !== null}>
           <Carousel
             photos={photos()}
             initialIndex={expandedIndex()!}

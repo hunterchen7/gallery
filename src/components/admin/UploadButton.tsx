@@ -7,6 +7,7 @@ interface UploadButtonProps {
   collections: Collection[];
   defaultCollectionId?: string;
   onUploadComplete: () => void;
+  placement?: "floating" | "dock";
 }
 
 export function UploadButton(props: UploadButtonProps) {
@@ -16,11 +17,15 @@ export function UploadButton(props: UploadButtonProps) {
     <>
       <button
         onClick={() => setShowModal(true)}
-        class="fixed bottom-4 left-4 z-40 p-3 bg-violet-600 hover:bg-violet-500 rounded-full shadow-lg transition-colors flex items-center gap-2"
+        class={`flex items-center gap-2 bg-violet-600 text-white shadow-lg transition-colors hover:bg-violet-500 ${
+          props.placement === "dock"
+            ? "shrink-0 rounded-lg px-3 py-2 text-sm"
+            : "fixed bottom-4 left-4 z-40 rounded-full p-3"
+        }`}
         title="Upload Photos"
       >
         <Upload class="w-5 h-5 text-white" />
-        <span class="text-white font-medium pr-1">Upload</span>
+        <span class="pr-1 font-medium">Upload</span>
       </button>
 
       <Show when={showModal()}>

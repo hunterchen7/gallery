@@ -187,21 +187,7 @@ export function Gallery(props: GalleryProps) {
     setSearchParams({ edit: "1", image: undefined });
   }
 
-  function handleDragStart(photoId: string, event: DragEvent) {
-    if (galleryEditMode() !== "reorder") return;
-    setDraggedPhotoId(photoId);
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = "move";
-      // Safari and Firefox will not begin a drag without a payload.
-      event.dataTransfer.setData("text/plain", photoId);
-    }
-  }
-
-  function handleDragOver(targetPhotoId: string, event: DragEvent) {
-    if (galleryEditMode() !== "reorder") return;
-    event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
-
+  function moveDraggedPhoto(targetPhotoId: string) {
     const draggedId = draggedPhotoId();
     if (!draggedId || draggedId === targetPhotoId) return;
 
@@ -217,12 +203,35 @@ export function Gallery(props: GalleryProps) {
     setEditablePhotos(reordered);
   }
 
-  function handleDrop(event: DragEvent) {
+  function handleReorderPointerDown(photoId: string, event: PointerEvent) {
+    if (
+      galleryEditMode() !== "reorder" ||
+      (event.pointerType === "mouse" && event.button !== 0)
+    ) {
+      return;
+    }
+
     event.preventDefault();
-    setDraggedPhotoId(null);
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    setDraggedPhotoId(photoId);
   }
 
-  function handleDragEnd() {
+  function handleReorderPointerMove(event: PointerEvent) {
+    if (!draggedPhotoId()) return;
+    event.preventDefault();
+
+    const target = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>("[data-reorder-photo-id]");
+    const targetPhotoId = target?.dataset.reorderPhotoId;
+    if (targetPhotoId) moveDraggedPhoto(targetPhotoId);
+  }
+
+  function handleReorderPointerEnd(event: PointerEvent) {
+    const card = event.currentTarget as HTMLElement;
+    if (card.hasPointerCapture(event.pointerId)) {
+      card.releasePointerCapture(event.pointerId);
+    }
     setDraggedPhotoId(null);
   }
 
@@ -360,12 +369,12 @@ export function Gallery(props: GalleryProps) {
   return (
     <GalleryShell>
       <Show when={isAdmin() && collectionsLoaded()}>
-        <UploadButton
-          collections={collections()}
-          defaultCollectionId={props.currentCollectionId}
-          onUploadComplete={() => window.location.reload()}
-        />
         <Show when={!editMode()}>
+          <UploadButton
+            collections={collections()}
+            defaultCollectionId={props.currentCollectionId}
+            onUploadComplete={() => window.location.reload()}
+          />
           <div class="fixed right-4 top-4 z-40 flex items-center gap-2">
             <a
               href="/admin"
@@ -403,6 +412,7 @@ export function Gallery(props: GalleryProps) {
           onRemoveFromCollection={removeSelectedFromCollection}
           onSaveOrder={saveOrder}
           onShuffle={shufflePhotos}
+          onUploadComplete={() => window.location.reload()}
         />
       </Show>
 
@@ -458,10 +468,12 @@ export function Gallery(props: GalleryProps) {
                     reorderMode={
                       editMode() && galleryEditMode() === "reorder"
                     }
-                    onDragStart={(event) => handleDragStart(photo.id, event)}
-                    onDragOver={(event) => handleDragOver(photo.id, event)}
-                    onDrop={handleDrop}
-                    onDragEnd={handleDragEnd}
+                    dragging={draggedPhotoId() === photo.id}
+                    onReorderPointerDown={(event) =>
+                      handleReorderPointerDown(photo.id, event)
+                    }
+                    onReorderPointerMove={handleReorderPointerMove}
+                    onReorderPointerEnd={handleReorderPointerEnd}
                   />
                 )}
               </For>

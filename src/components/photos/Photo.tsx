@@ -12,25 +12,13 @@ interface PhotoProps {
   editing?: boolean;
   selected?: boolean;
   reorderMode?: boolean;
-  onDragStart?: (event: DragEvent) => void;
-  onDragOver?: (event: DragEvent) => void;
-  onDrop?: (event: DragEvent) => void;
-  onDragEnd?: (event: DragEvent) => void;
+  dragging?: boolean;
+  onReorderPointerDown?: (event: PointerEvent) => void;
+  onReorderPointerMove?: (event: PointerEvent) => void;
+  onReorderPointerEnd?: (event: PointerEvent) => void;
 }
 
-export function Photo({
-  photo,
-  onClick,
-  index,
-  playAnimation = true,
-  editing = false,
-  selected = false,
-  reorderMode = false,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  onDragEnd,
-}: PhotoProps) {
+export function Photo(props: PhotoProps) {
   const [loaded, setLoaded] = createSignal(false);
   const [aspectRatio, setAspectRatio] = createSignal(1); // Default aspect ratio
   const [baseWidth, setBaseWidth] = createSignal(300); // Default base width
@@ -98,22 +86,22 @@ export function Photo({
 
   return (
     <div
-      draggable={reorderMode}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      onDragEnd={onDragEnd}
-      onClick={onClick}
-      class={`relative flex-grow rounded shadow-lg overflow-hidden border bg-violet-900/20 flex flex-col min-w-[135px] max-w-[600px] min-h-[135px] ${playAnimation ? "content-fade-in" : ""} transition-[border-color,box-shadow,transform] ${
-        selected
+      data-reorder-photo-id={props.reorderMode ? props.photo.id : undefined}
+      onPointerDown={props.onReorderPointerDown}
+      onPointerMove={props.onReorderPointerMove}
+      onPointerUp={props.onReorderPointerEnd}
+      onPointerCancel={props.onReorderPointerEnd}
+      onClick={props.onClick}
+      class={`relative flex-grow rounded shadow-lg overflow-hidden border bg-violet-900/20 flex flex-col min-w-[135px] max-w-[600px] min-h-[135px] ${props.playAnimation ?? true ? "content-fade-in" : ""} transition-[border-color,box-shadow,transform,opacity] ${
+        props.selected
           ? "border-violet-200 ring-4 ring-inset ring-violet-400 shadow-[0_0_28px_rgba(139,92,246,0.65)]"
-          : editing
+          : props.editing
             ? "border-zinc-700 hover:border-violet-500"
             : "border-violet-700/50 hover:scale-[1.01]"
-      } ${reorderMode ? "cursor-grab select-none active:cursor-grabbing" : editing ? "cursor-pointer" : ""}`}
+      } ${props.reorderMode ? "touch-none cursor-grab select-none active:cursor-grabbing" : props.editing ? "cursor-pointer" : ""} ${props.dragging ? "z-20 scale-[0.98] opacity-70 ring-2 ring-violet-300" : ""}`}
       style={`
   flex-basis: ${baseWidth() * aspectRatio()}px;
-  ${playAnimation ? `animation-delay: ${Math.min(index * 0.08, 2)}s;` : ""}
+  ${props.playAnimation ?? true ? `animation-delay: ${Math.min(props.index * 0.08, 2)}s;` : ""}
   `}
     >
       <div class="relative flex-1">
@@ -124,41 +112,41 @@ export function Photo({
         )}
         <img
           ref={handleImgRef}
-          src={`${S3_PREFIX}${photo.thumbnail}`}
+          src={`${S3_PREFIX}${props.photo.thumbnail}`}
           alt="Gallery photo"
           class={`w-full h-full object-cover transition-opacity duration-300 max-h-96 max-w-[600px] ${
             loaded() ? "opacity-100" : "opacity-0"
-          } transition-transform ${reorderMode ? "pointer-events-none select-none" : editing ? "" : "hover:scale-[1.02] cursor-nesw-resize"}`}
+          } transition-transform ${props.reorderMode ? "pointer-events-none select-none" : props.editing ? "" : "hover:scale-[1.02] cursor-nesw-resize"}`}
           loading="lazy"
           draggable={false}
           onLoad={handleImageLoad}
         />
-        <Show when={editing && !reorderMode}>
-          <Show when={selected}>
+        <Show when={props.editing && !props.reorderMode}>
+          <Show when={props.selected}>
             <span class="pointer-events-none absolute inset-0 bg-violet-500/20" />
           </Show>
           <span
             class={`pointer-events-none absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full border-2 shadow-xl ${
-              selected
+              props.selected
                 ? "border-white bg-violet-500 ring-2 ring-violet-300/70"
                 : "border-white/70 bg-black/50"
             }`}
           >
-            <Show when={selected}>
+            <Show when={props.selected}>
               <Check class="h-5 w-5 stroke-[3] text-white" />
             </Show>
           </span>
         </Show>
-        <Show when={reorderMode}>
+        <Show when={props.reorderMode}>
           <span class="absolute left-2 top-2 flex items-center gap-1 rounded-md bg-black/70 px-2 py-1 text-xs text-white shadow-lg">
             <GripVertical class="h-3.5 w-3.5" />
-            {index + 1}
+            {props.index + 1}
           </span>
         </Show>
       </div>
       <div class="p-1 flex-shrink-0">
         <span class="text-xs text-violet-300 font-mono inline cursor-text">
-          {photo.date ? formatDate(photo.date) : ""}
+          {props.photo.date ? formatDate(props.photo.date) : ""}
         </span>
       </div>
     </div>

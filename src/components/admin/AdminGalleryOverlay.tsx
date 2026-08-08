@@ -15,6 +15,7 @@ import {
 } from "lucide-solid";
 import type { Collection } from "~/db/schema";
 import { CollectionModal } from "./CollectionModal";
+import { UploadButton } from "./UploadButton";
 
 export type GalleryEditMode = "select" | "reorder";
 
@@ -42,6 +43,7 @@ interface AdminGalleryOverlayProps {
   onRemoveFromCollection: () => void;
   onSaveOrder: () => void;
   onShuffle: () => void;
+  onUploadComplete: () => void;
 }
 
 export function AdminGalleryOverlay(props: AdminGalleryOverlayProps) {
@@ -76,10 +78,16 @@ export function AdminGalleryOverlay(props: AdminGalleryOverlayProps) {
 
   return (
     <>
-      <div class="fixed left-1/2 top-2 z-40 h-16 w-[calc(100vw-1rem)] max-w-6xl -translate-x-1/2 overflow-hidden rounded-xl border border-violet-700/70 bg-zinc-950/95 text-left shadow-2xl backdrop-blur-xl">
+      <div class="fixed bottom-2 left-1/2 z-40 h-16 w-[calc(100vw-1rem)] max-w-6xl -translate-x-1/2 overflow-hidden rounded-xl border border-violet-700/70 bg-zinc-950/95 text-left shadow-2xl backdrop-blur-xl">
         <div class="flex h-full min-w-0 items-center gap-2 p-2">
           <div class="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div class="flex shrink-0 items-center gap-2 border-r border-zinc-800 pr-2">
+            <UploadButton
+              collections={props.collections}
+              defaultCollectionId={props.currentCollectionId}
+              onUploadComplete={props.onUploadComplete}
+              placement="dock"
+            />
             <span class="hidden items-center gap-2 text-sm font-medium text-violet-200 sm:flex">
               <Pencil class="h-4 w-4" />
               Edit gallery
@@ -230,7 +238,7 @@ export function AdminGalleryOverlay(props: AdminGalleryOverlayProps) {
       <Show when={props.message}>
         {(message) => (
           <div
-            class={`fixed left-1/2 top-20 z-40 max-w-[calc(100vw-1rem)] -translate-x-1/2 rounded-lg border px-3 py-2 text-xs shadow-xl backdrop-blur-xl ${
+            class={`fixed bottom-20 left-1/2 z-40 max-w-[calc(100vw-1rem)] -translate-x-1/2 rounded-lg border px-3 py-2 text-xs shadow-xl backdrop-blur-xl ${
               message().type === "success"
                 ? "border-green-500/30 bg-green-950/95 text-green-300"
                 : "border-red-500/30 bg-red-950/95 text-red-300"

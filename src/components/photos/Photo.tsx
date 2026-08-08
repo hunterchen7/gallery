@@ -12,6 +12,7 @@ interface PhotoProps {
   editing?: boolean;
   selected?: boolean;
   dragging?: boolean;
+  onSelect: () => void;
   onReorderPointerDown?: (event: PointerEvent) => void;
 }
 
@@ -91,7 +92,7 @@ export function Photo(props: PhotoProps) {
           ? "border-violet-200 ring-4 ring-inset ring-violet-400 shadow-[0_0_28px_rgba(139,92,246,0.65)]"
           : props.editing
             ? "border-zinc-700 hover:border-violet-500"
-            : "border-violet-700/50 hover:scale-[1.01]"
+            : "border-violet-700/50"
       } ${props.editing ? "touch-none cursor-grab select-none active:cursor-grabbing" : ""} ${props.dragging ? "border-dashed border-violet-400 bg-violet-950/50 opacity-20" : ""}`}
       style={`
   flex-basis: ${baseWidth() * aspectRatio()}px;
@@ -115,22 +116,32 @@ export function Photo(props: PhotoProps) {
           draggable={false}
           onLoad={handleImageLoad}
         />
-        <Show when={props.editing}>
+        <Show when={props.selected}>
+          <span class="pointer-events-none absolute inset-0 bg-violet-500/20" />
+        </Show>
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            props.onSelect();
+          }}
+          class={`absolute right-2 top-2 z-20 flex h-9 w-9 items-center justify-center rounded-full border-2 shadow-xl transition-all duration-150 focus:opacity-100 focus:outline-none ${
+            props.selected
+              ? "scale-100 border-white bg-violet-500 opacity-100 ring-2 ring-violet-300/70"
+              : "scale-90 border-white/80 bg-black/55 opacity-0 hover:bg-violet-600 group-hover:scale-100 group-hover:opacity-100"
+          }`}
+          aria-label={props.selected ? "Deselect photo" : "Select photo"}
+          aria-pressed={props.selected}
+        >
           <Show when={props.selected}>
-            <span class="pointer-events-none absolute inset-0 bg-violet-500/20" />
+            <Check class="h-5 w-5 stroke-[3] text-white" />
           </Show>
+        </button>
+        <Show when={props.editing}>
           <span
-            class={`pointer-events-none absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full border-2 shadow-xl ${
-              props.selected
-                ? "border-white bg-violet-500 ring-2 ring-violet-300/70"
-                : "border-white/70 bg-black/50"
-            }`}
+            class="pointer-events-none absolute left-2 top-2 flex items-center gap-1 rounded-md bg-black/70 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
           >
-            <Show when={props.selected}>
-              <Check class="h-5 w-5 stroke-[3] text-white" />
-            </Show>
-          </span>
-          <span class="pointer-events-none absolute left-2 top-2 flex items-center gap-1 rounded-md bg-black/70 px-2 py-1 text-xs text-white opacity-70 shadow-lg transition-opacity group-hover:opacity-100">
             <GripVertical class="h-3.5 w-3.5" />
             {props.index + 1}
           </span>

@@ -110,8 +110,8 @@ async function objectExists(filename: string): Promise<boolean> {
   throw new Error(`R2 existence check failed with status ${response.status}`);
 }
 
-/** Calculate the SHA-256 hash of an existing R2 object. */
-export async function getObjectContentHash(filename: string): Promise<string> {
+/** Fetch an R2 object through an authenticated server-side request. */
+export async function getR2Object(filename: string): Promise<Response> {
   const config = getR2Config();
   const client = new AwsClient({
     accessKeyId: config.accessKeyId,
@@ -121,7 +121,12 @@ export async function getObjectContentHash(filename: string): Promise<string> {
     `https://${config.accountId}.r2.cloudflarestorage.com/${config.bucketName}/${filename}`,
   );
   const request = await client.sign(new Request(url, { method: "GET" }));
-  const response = await fetch(request);
+  return fetch(request);
+}
+
+/** Calculate the SHA-256 hash of an existing R2 object. */
+export async function getObjectContentHash(filename: string): Promise<string> {
+  const response = await getR2Object(filename);
   if (!response.ok) {
     throw new Error(`R2 object download failed with status ${response.status}`);
   }

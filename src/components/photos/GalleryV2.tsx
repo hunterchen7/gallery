@@ -12,14 +12,13 @@ import {
   Check,
   GripVertical,
   Loader2,
-  Pencil,
   Settings,
   X,
 } from "lucide-solid";
 import { Photo as PhotoComponent } from "~/components/photos/Photo";
 import { Carousel } from "~/components/photos/Carousel";
 import { getStoredAuthKey, isAuthenticated } from "~/lib/auth";
-import { AdminGalleryActions } from "~/components/admin/AdminGalleryActions";
+import { GalleryActions } from "~/components/photos/GalleryActions";
 import { UploadButton } from "~/components/admin/UploadButton";
 import { type GalleryPhoto, S3_PREFIX } from "~/types/photo";
 import { useCollections, shouldPlayAnimations } from "~/lib/galleryStore";
@@ -62,7 +61,7 @@ const SLOT_ANIMATION_MS = 220;
 function GalleryShell(props: { title: JSX.Element; children: JSX.Element }) {
   return (
     <main class="mx-auto pb-12 text-center font-mono text-violet-200">
-      <h1 class="mx-auto mb-8 mt-2 max-w-[14rem] text-2xl font-thin leading-tight sm:text-4xl md:mt-12 md:max-w-none">
+      <h1 class="mx-auto mb-8 mt-2 flex h-12 max-w-[14rem] items-center justify-center text-2xl font-thin leading-tight sm:text-4xl md:mt-12 md:max-w-none">
         {props.title}
       </h1>
       {props.children}
@@ -92,7 +91,6 @@ export function Gallery(props: GalleryProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const { collections, collectionsLoaded, loadCollections } = useCollections();
   const [isAdmin, setIsAdmin] = createSignal(false);
-  const [editMode, setEditMode] = createSignal(false);
   const [displayName, setDisplayName] = createSignal("gallery");
   const [displayDescription, setDisplayDescription] = createSignal("");
   const [draftName, setDraftName] = createSignal("gallery");
@@ -166,10 +164,8 @@ export function Gallery(props: GalleryProps) {
       setIsAdmin(authenticated);
       await loadCollections();
 
-      if (authenticated && searchParams.edit === "1") setEditMode(true);
-
       const imageParam = searchParams.image;
-      if (searchParams.edit !== "1" && imageParam) {
+      if (imageParam) {
         const photoIndex = photos().findIndex(
           (photo) => photo.url === imageParam,
         );
@@ -205,11 +201,6 @@ export function Gallery(props: GalleryProps) {
   }
 
   function handlePhotoClick(photo: GalleryPhoto, index: number) {
-    if (!editMode()) {
-      setExpandedIndexWithUrl(index);
-      return;
-    }
-
     if (
       suppressedClick?.photoId === photo.id &&
       performance.now() < suppressedClick.until
@@ -217,7 +208,8 @@ export function Gallery(props: GalleryProps) {
       suppressedClick = undefined;
       return;
     }
-    togglePhoto(photo.id);
+    if (selectedPhotoIds().size > 0) togglePhoto(photo.id);
+    else setExpandedIndexWithUrl(index);
   }
 
   function handleSelectAll() {
@@ -228,33 +220,10 @@ export function Gallery(props: GalleryProps) {
     }
   }
 
-  function restoreOriginalOrder() {
-    const byId = new Map(photos().map((photo) => [photo.id, photo]));
-    const restored = originalOrder()
-      .map((photoId) => byId.get(photoId))
-      .filter((photo): photo is GalleryPhoto => Boolean(photo));
-    setEditablePhotos(restored);
-  }
-
-  function finishEditMode() {
+  function clearSelection() {
     setSelectedPhotoIds(new Set<string>());
     setMessage(undefined);
     setDetailsStatus(undefined);
-    setEditMode(false);
-    setSearchParams({ edit: undefined, mode: undefined });
-  }
-
-  function exitEditMode() {
-    if (orderChanged()) restoreOriginalOrder();
-    setDraftName(displayName());
-    setDraftDescription(displayDescription());
-    finishEditMode();
-  }
-
-  function enterEditMode() {
-    setExpandedIndexWithUrl(null);
-    setEditMode(true);
-    setSearchParams({ edit: "1", image: undefined, mode: undefined });
   }
 
   function moveDraggedPhoto(targetPhotoId: string) {
@@ -313,7 +282,7 @@ export function Gallery(props: GalleryProps) {
     event: PointerEvent,
   ) {
     if (
-      !editMode() ||
+      !isAdmin() ||
       (event.pointerType === "mouse" && event.button !== 0)
     ) {
       return;
@@ -475,15 +444,20 @@ export function Gallery(props: GalleryProps) {
   }
 
   function handleEditKeyDown(event: KeyboardEvent) {
-    if (!editMode() || busy() || !(event.metaKey || event.ctrlKey)) return;
+    if (!isAdmin() || busy() || !(event.metaKey || event.ctrlKey)) return;
     const target = event.target as HTMLElement | null;
     if (target?.matches("input, textarea, select, [contenteditable=true]")) {
       return;
     }
-    if (event.key.toLowerCase() !== "z") return;
-    event.preventDefault();
-    if (event.shiftKey) redoLocalAction();
-    else undoLocalAction();
+    const key = event.key.toLowerCase();
+    if (key === "z") {
+      event.preventDefault();
+      if (event.shiftKey) redoLocalAction();
+      else undoLocalAction();
+    } else if (key === "s" && hasPendingChanges()) {
+      event.preventDefault();
+      void savePendingChanges();
+    }
   }
 
   async function addSelectedToCollection(collectionId: string) {
@@ -661,11 +635,10 @@ export function Gallery(props: GalleryProps) {
     }
   }
 
-  async function saveAndExitEditMode() {
+  async function savePendingChanges() {
     if (busy() || savingDetails()) return;
     if (!(await saveCollectionDetails())) return;
     if (!(await saveOrder())) return;
-    finishEditMode();
   }
 
   async function handleUploadComplete() {
@@ -676,17 +649,49 @@ export function Gallery(props: GalleryProps) {
     window.location.reload();
   }
 
+  async function downloadSelectedPhotos() {
+    const selectedPhotos = photos().filter((photo) =>
+      selectedPhotoIds().has(photo.id),
+    );
+    if (selectedPhotos.length === 0) return;
+
+    setBusy(true);
+    setMessage(undefined);
+    try {
+      for (const photo of selectedPhotos) {
+        const link = document.createElement("a");
+        link.href = `/api/photos/${photo.id}/download`;
+        link.download = "";
+        document.body.append(link);
+        link.click();
+        link.remove();
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      setMessage({
+        type: "success",
+        text: `${selectedPhotos.length} download${selectedPhotos.length === 1 ? "" : "s"} started`,
+      });
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Download failed",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <GalleryShell
       title={
         <Show
-          when={editMode() && props.currentCollectionId}
+          when={isAdmin() && props.currentCollectionId}
           fallback={displayName()}
         >
           <input
             value={draftName()}
             onInput={(event) => setDraftName(event.currentTarget.value)}
-            class="w-[min(82vw,36rem)] border-b border-violet-700 bg-transparent px-2 text-center font-thin text-violet-100 outline-none transition-colors focus:border-violet-400"
+            class="w-[min(82vw,36rem)] border-b border-transparent bg-transparent px-2 text-center font-thin text-violet-100 outline-none transition-colors hover:border-zinc-700 focus:border-violet-400"
             aria-label="Gallery name"
           />
         </Show>
@@ -717,58 +722,49 @@ export function Gallery(props: GalleryProps) {
             <span class="hidden sm:inline">Settings</span>
           </A>
 
-          <Show
-            when={editMode()}
-            fallback={
-              <button
-                onClick={enterEditMode}
-                class="flex items-center gap-2 rounded-full bg-zinc-900/90 px-3 py-2 text-sm font-medium text-violet-200 shadow-lg backdrop-blur-sm transition-colors hover:bg-violet-600 hover:text-white sm:px-4"
-              >
-                <Pencil class="h-4 w-4" />
-                Edit
-              </button>
+          <button
+            onClick={() =>
+              void (hasPendingChanges()
+                ? savePendingChanges()
+                : clearSelection())
+            }
+            disabled={
+              busy() ||
+              savingDetails() ||
+              (!hasPendingChanges() && selectedPhotoIds().size === 0)
+            }
+            class={`flex h-10 w-10 items-center justify-center rounded-full shadow-lg backdrop-blur-sm transition-colors disabled:opacity-35 ${
+              hasPendingChanges()
+                ? "bg-violet-600 text-white hover:bg-violet-500"
+                : "bg-zinc-900/90 text-zinc-300 hover:bg-zinc-800"
+            }`}
+            title={hasPendingChanges() ? "Save changes" : "Clear selection"}
+            aria-label={
+              hasPendingChanges() ? "Save changes" : "Clear selection"
             }
           >
-            <button
-              onClick={() =>
-                void (hasPendingChanges()
-                  ? saveAndExitEditMode()
-                  : exitEditMode())
-              }
-              disabled={busy() || savingDetails()}
-              class={`flex h-10 w-10 items-center justify-center rounded-full shadow-lg backdrop-blur-sm transition-colors disabled:opacity-60 ${
-                hasPendingChanges()
-                  ? "bg-violet-600 text-white hover:bg-violet-500"
-                  : "bg-zinc-900/90 text-zinc-300 hover:bg-zinc-800"
-              }`}
-              title={hasPendingChanges() ? "Save changes" : "Close editor"}
-              aria-label={
-                hasPendingChanges() ? "Save changes" : "Close editor"
-              }
+            <Show
+              when={!busy() && !savingDetails()}
+              fallback={<Loader2 class="h-5 w-5 animate-spin" />}
             >
-              <Show
-                when={!busy() && !savingDetails()}
-                fallback={<Loader2 class="h-5 w-5 animate-spin" />}
-              >
-                <span class="relative block h-5 w-5">
-                  <X
-                    class={`absolute inset-0 h-5 w-5 transition-all duration-200 ${
-                      hasPendingChanges()
-                        ? "scale-75 opacity-0"
-                        : "scale-100 opacity-100"
-                    }`}
-                  />
-                  <Check
-                    class={`absolute inset-0 h-5 w-5 stroke-[2.5] transition-all duration-200 ${
-                      hasPendingChanges()
-                        ? "scale-100 opacity-100"
-                        : "scale-75 opacity-0"
-                    }`}
-                  />
-                </span>
-              </Show>
-            </button>
-          </Show>
+              <span class="relative block h-5 w-5">
+                <X
+                  class={`absolute inset-0 h-5 w-5 transition-all duration-200 ${
+                    hasPendingChanges()
+                      ? "scale-75 opacity-0"
+                      : "scale-100 opacity-100"
+                  }`}
+                />
+                <Check
+                  class={`absolute inset-0 h-5 w-5 stroke-[2.5] transition-all duration-200 ${
+                    hasPendingChanges()
+                      ? "scale-100 opacity-100"
+                      : "scale-75 opacity-0"
+                  }`}
+                />
+              </span>
+            </Show>
+          </button>
         </div>
       </Show>
 
@@ -804,15 +800,17 @@ export function Gallery(props: GalleryProps) {
       </Show>
 
       <div class="mx-4 mb-4 text-xs text-violet-200 md:text-sm">
-        <div class="mx-auto min-h-12 max-w-2xl px-3">
+        <div class="mx-auto h-20 max-w-2xl px-3">
           <Show
-            when={editMode() && props.currentCollectionId}
+            when={isAdmin() && props.currentCollectionId}
             fallback={
               <Show
                 when={props.currentCollection}
                 fallback={props.caption}
               >
-                <p class="text-zinc-400">{displayDescription()}</p>
+                <p class="flex h-16 items-center justify-center text-zinc-400">
+                  {displayDescription()}
+                </p>
               </Show>
             }
           >
@@ -821,12 +819,11 @@ export function Gallery(props: GalleryProps) {
               onInput={(event) =>
                 setDraftDescription(event.currentTarget.value)
               }
-              rows={2}
               placeholder="Add a description"
-              class="w-full resize-none rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-center text-sm text-violet-200 outline-none transition-colors placeholder:text-zinc-600 focus:border-violet-600"
+              class="h-14 w-full resize-none rounded-lg border border-transparent bg-transparent px-3 py-2 text-center text-sm text-violet-200 outline-none transition-colors placeholder:text-zinc-600 hover:border-zinc-800 focus:border-violet-600 focus:bg-zinc-950/60"
               aria-label="Gallery description"
             />
-            <div class="min-h-5 pt-1 text-xs">
+            <div class="h-5 pt-1 text-xs">
               <Show when={detailsStatus()}>
                 {(status) => (
                   <span
@@ -844,8 +841,8 @@ export function Gallery(props: GalleryProps) {
           </Show>
         </div>
 
-        <div class="mt-2 space-x-2">
-          <span>collections:</span>
+        <div class="mt-2 flex h-10 items-center justify-center gap-2 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <span class="shrink-0">collections:</span>
           <Show
             when={collectionsLoaded() && collections().length > 0}
             fallback={
@@ -867,23 +864,23 @@ export function Gallery(props: GalleryProps) {
           </Show>
         </div>
 
-        <Show when={isAdmin() && editMode()}>
-          <AdminGalleryActions
-            collections={collections()}
-            currentCollectionId={props.currentCollectionId}
-            photoCount={photos().length}
-            selectedCount={selectedPhotoIds().size}
-            canUndo={canUndo()}
-            canRedo={canRedo()}
-            busy={busy() || savingDetails()}
-            message={message()}
-            onSelectAll={handleSelectAll}
-            onAddToCollection={addSelectedToCollection}
-            onRemoveFromCollection={removeSelectedFromCollection}
-            onUndo={undoLocalAction}
-            onRedo={redoLocalAction}
-          />
-        </Show>
+        <GalleryActions
+          isAdmin={isAdmin()}
+          collections={collections()}
+          currentCollectionId={props.currentCollectionId}
+          photoCount={photos().length}
+          selectedCount={selectedPhotoIds().size}
+          canUndo={canUndo()}
+          canRedo={canRedo()}
+          busy={busy() || savingDetails()}
+          message={message()}
+          onSelectAll={handleSelectAll}
+          onDownloadSelected={downloadSelectedPhotos}
+          onAddToCollection={addSelectedToCollection}
+          onRemoveFromCollection={removeSelectedFromCollection}
+          onUndo={undoLocalAction}
+          onRedo={redoLocalAction}
+        />
 
         <div class="w-fill p-1 sm:p-2 md:p-4">
           <Show
@@ -901,8 +898,8 @@ export function Gallery(props: GalleryProps) {
                     photo={photo}
                     index={index()}
                     onClick={() => handlePhotoClick(photo, index())}
-                    playAnimation={playAnimations() && !editMode()}
-                    editing={editMode()}
+                    playAnimation={playAnimations()}
+                    editing={isAdmin()}
                     selected={selectedPhotoIds().has(photo.id)}
                     dragging={
                       dragState()?.active && dragState()?.photo.id === photo.id
@@ -910,6 +907,7 @@ export function Gallery(props: GalleryProps) {
                     onReorderPointerDown={(event) =>
                       handleReorderPointerDown(photo, event)
                     }
+                    onSelect={() => togglePhoto(photo.id)}
                   />
                 )}
               </For>
@@ -917,7 +915,7 @@ export function Gallery(props: GalleryProps) {
           </Show>
         </div>
 
-        <Show when={!editMode() && expandedIndex() !== null}>
+        <Show when={expandedIndex() !== null}>
           <Carousel
             photos={photos()}
             initialIndex={expandedIndex()!}

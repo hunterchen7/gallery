@@ -1,8 +1,15 @@
 import { createEffect, createSignal, For, Show } from "solid-js";
-import { CopyPlus, Redo2, Trash2, Undo2 } from "lucide-solid";
+import {
+  CopyPlus,
+  Download,
+  Redo2,
+  Trash2,
+  Undo2,
+} from "lucide-solid";
 import type { Collection } from "~/db/schema";
 
-interface AdminGalleryActionsProps {
+interface GalleryActionsProps {
+  isAdmin: boolean;
   collections: Collection[];
   currentCollectionId?: string;
   photoCount: number;
@@ -12,13 +19,14 @@ interface AdminGalleryActionsProps {
   busy: boolean;
   message?: { type: "success" | "error"; text: string };
   onSelectAll: () => void;
+  onDownloadSelected: () => void;
   onAddToCollection: (collectionId: string) => void;
   onRemoveFromCollection: () => void;
   onUndo: () => void;
   onRedo: () => void;
 }
 
-export function AdminGalleryActions(props: AdminGalleryActionsProps) {
+export function GalleryActions(props: GalleryActionsProps) {
   const [targetCollectionId, setTargetCollectionId] = createSignal("");
   const targetCollections = () =>
     props.collections.filter(
@@ -33,8 +41,15 @@ export function AdminGalleryActions(props: AdminGalleryActionsProps) {
   });
 
   return (
-    <section class="mx-auto mt-5 max-w-5xl text-left">
-      <div class="flex h-11 items-center gap-2 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <section class="relative mx-auto h-16 max-w-5xl text-left">
+      <div
+        class={`absolute inset-x-0 top-0 flex h-11 items-center gap-2 overflow-x-auto px-1 pr-20 transition-opacity duration-150 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+          props.selectedCount > 0
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0"
+        }`}
+        aria-hidden={props.selectedCount === 0}
+      >
         <button
           onClick={props.onSelectAll}
           disabled={props.photoCount === 0}
@@ -44,10 +59,19 @@ export function AdminGalleryActions(props: AdminGalleryActionsProps) {
             ? "Deselect all"
             : "Select all"}
         </button>
-        <Show when={props.selectedCount > 0}>
-          <span class="w-20 shrink-0 text-center text-xs text-zinc-500">
-            {props.selectedCount} selected
-          </span>
+        <span class="w-20 shrink-0 text-center text-xs text-zinc-500">
+          {props.selectedCount} selected
+        </span>
+        <button
+          onClick={props.onDownloadSelected}
+          disabled={props.busy}
+          class="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm text-violet-300 hover:bg-zinc-800 disabled:opacity-40"
+        >
+          <Download class="h-4 w-4" />
+          Download
+        </button>
+
+        <Show when={props.isAdmin}>
           <select
             value={targetCollectionId()}
             onChange={(event) =>
@@ -79,8 +103,10 @@ export function AdminGalleryActions(props: AdminGalleryActionsProps) {
             Remove
           </button>
         </Show>
+      </div>
 
-        <div class="ml-auto flex shrink-0 items-center gap-1">
+      <Show when={props.isAdmin}>
+        <div class="absolute right-1 top-0 flex h-11 items-center gap-1">
           <button
             onClick={props.onUndo}
             disabled={props.busy || !props.canUndo}
@@ -100,9 +126,9 @@ export function AdminGalleryActions(props: AdminGalleryActionsProps) {
             <Redo2 class="h-4 w-4" />
           </button>
         </div>
-      </div>
+      </Show>
 
-      <div class="min-h-5 px-2 pt-1 text-center text-xs">
+      <div class="absolute inset-x-0 bottom-0 h-5 px-2 text-center text-xs">
         <Show when={props.message}>
           {(message) => (
             <span

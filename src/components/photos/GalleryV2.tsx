@@ -7,7 +7,12 @@ import {
   onMount,
   Show,
 } from "solid-js";
-import { A, useSearchParams } from "@solidjs/router";
+import {
+  A,
+  revalidate,
+  usePreloadRoute,
+  useSearchParams,
+} from "@solidjs/router";
 import {
   Check,
   GripVertical,
@@ -24,6 +29,7 @@ import { GalleryActions } from "~/components/photos/GalleryActions";
 import { UploadButton } from "~/components/admin/UploadButton";
 import { type GalleryPhoto, S3_PREFIX } from "~/types/photo";
 import { useCollections } from "~/lib/galleryStore";
+import { getPublicCollectionPage } from "~/lib/collection-query";
 import { formatDate } from "~/utils/date";
 
 export { type GalleryPhoto } from "~/types/photo";
@@ -74,6 +80,7 @@ function GalleryShell(props: { title: JSX.Element; children: JSX.Element }) {
 export function Gallery(props: GalleryProps) {
   const [expandedIndex, setExpandedIndex] = createSignal<number | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+  const preloadRoute = usePreloadRoute();
   const { collections, collectionsLoaded, loadCollections } = useCollections();
   const [isAdmin, setIsAdmin] = createSignal(false);
   const [displayName, setDisplayName] = createSignal("gallery");
@@ -102,6 +109,7 @@ export function Gallery(props: GalleryProps) {
   let pendingSlotTimer: number | undefined;
   let lastSlottedPhotoId: string | undefined;
   let slotLockedUntil = 0;
+  const collectionPreloadTimers: number[] = [];
 
   const photos = () => editablePhotos();
   const canUndo = () => orderHistoryIndex() > 0;
@@ -146,6 +154,24 @@ export function Gallery(props: GalleryProps) {
       setIsAdmin(authenticated);
       await loadCollections();
 
+      // Let the current gallery settle first, then warm the route code and
+      // cached page payloads for the other public collections in small,
+      // staggered requests.
+      collections()
+        .filter(
+          (collection) =>
+            !collection.isPrivate && collection.id !== props.currentCollectionId,
+        )
+        .forEach((collection, index) => {
+          collectionPreloadTimers.push(
+            window.setTimeout(
+              () =>
+                preloadRoute(`/${collection.id}`, { preloadData: true }),
+              300 + index * 125,
+            ),
+          );
+        });
+
       const imageParam = searchParams.image;
       if (imageParam) {
         const photoIndex = photos().findIndex(
@@ -159,8 +185,13 @@ export function Gallery(props: GalleryProps) {
   onCleanup(() => {
     if (typeof window === "undefined") return;
     window.removeEventListener("keydown", handleEditKeyDown);
+    collectionPreloadTimers.forEach((timer) => window.clearTimeout(timer));
     stopPointerTracking();
   });
+
+  function invalidateCollectionPage(collectionId: string) {
+    void revalidate(getPublicCollectionPage.keyFor(collectionId));
+  }
 
   function updateUrlWithImage(index: number | null) {
     if (index !== null && photos()[index]) {
@@ -463,6 +494,8 @@ export function Gallery(props: GalleryProps) {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Failed to add photos");
 
+      invalidateCollectionPage(collectionId);
+
       const targetName = collections().find(
         (collection) => collection.id === collectionId,
       )?.name;
@@ -520,6 +553,7 @@ export function Gallery(props: GalleryProps) {
       setOrderHistory([remainingOrder]);
       setOrderHistoryIndex(0);
       setSelectedPhotoIds(new Set<string>());
+      if (removed.size > 0) invalidateCollectionPage(collectionId);
       setMessage({
         type: removed.size === photoIds.length ? "success" : "error",
         text:
@@ -571,6 +605,7 @@ export function Gallery(props: GalleryProps) {
       setDisplayDescription(result.description || "");
       setDraftName(result.name);
       setDraftDescription(result.description || "");
+      invalidateCollectionPage(collectionId);
       await loadCollections(true);
       return true;
     } catch (error) {
@@ -608,6 +643,7 @@ export function Gallery(props: GalleryProps) {
       setOriginalOrder(photoIds);
       setOrderHistory([photoIds]);
       setOrderHistoryIndex(0);
+      invalidateCollectionPage(collectionId);
       setMessage({ type: "success", text: "Photo order saved" });
       return true;
     } catch (error) {

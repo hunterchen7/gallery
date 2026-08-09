@@ -105,6 +105,35 @@ main {
     scrollbar-gutter: stable;
 }
 
+/* Photo geometry is known before images load; no mount-time JS resize pass. */
+.gallery-photo-card {
+    flex-basis: calc(125px * var(--photo-aspect, 1));
+}
+
+@media (min-width: 640px) {
+    .gallery-photo-card {
+        flex-basis: calc(150px * var(--photo-aspect, 1));
+    }
+}
+
+@media (min-width: 768px) {
+    .gallery-photo-card {
+        flex-basis: calc(175px * var(--photo-aspect, 1));
+    }
+}
+
+@media (min-width: 1024px) {
+    .gallery-photo-card {
+        flex-basis: calc(200px * var(--photo-aspect, 1));
+    }
+}
+
+@media (min-width: 1536px) {
+    .gallery-photo-card {
+        flex-basis: calc(300px * var(--photo-aspect, 1));
+    }
+}
+
 /* Custom cursor overrides */
 /* Pointer */
 .cursor-pointer,

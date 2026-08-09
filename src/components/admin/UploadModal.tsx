@@ -193,6 +193,8 @@ export function UploadModal(props: UploadModalProps) {
             uploadPlan.thumbnailFilename ||
             processed.thumbnailFilename,
           contentHash: processed.contentHash,
+          width: processed.width,
+          height: processed.height,
           date: processed.date.toISOString(),
           collectionIds,
         }),

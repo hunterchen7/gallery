@@ -7,6 +7,8 @@ export interface GalleryPhoto {
   id: string;
   url: string;
   thumbnail: string;
+  width: number | null;
+  height: number | null;
   date: string;
 }
 

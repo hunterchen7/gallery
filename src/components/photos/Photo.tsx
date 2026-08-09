@@ -1,4 +1,4 @@
-import { createSignal, Show, onMount, onCleanup } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { type GalleryPhoto, S3_PREFIX } from "~/types/photo";
 import { LoadingSpinner } from "../LoadingSpinner";
 import { formatDate } from "~/utils/date";
@@ -8,7 +8,6 @@ interface PhotoProps {
   photo: GalleryPhoto;
   onClick: () => void;
   index: number;
-  playAnimation?: boolean;
   editing?: boolean;
   selected?: boolean;
   dragging?: boolean;
@@ -18,86 +17,33 @@ interface PhotoProps {
 
 export function Photo(props: PhotoProps) {
   const [loaded, setLoaded] = createSignal(false);
-  const [aspectRatio, setAspectRatio] = createSignal(1); // Default aspect ratio
-  const [baseWidth, setBaseWidth] = createSignal(300); // Default base width
-  let imgRef: HTMLImageElement | null = null;
-
-  // Function to calculate base width based on screen size
-  const updateBaseWidth = () => {
-    const width = window.innerWidth;
-    if (width < 640) {
-      // sm
-      setBaseWidth(125);
-    } else if (width < 768) {
-      // md
-      setBaseWidth(150);
-    } else if (width < 1024) {
-      // lg
-      setBaseWidth(175);
-    } else if (width < 1536) {
-      // xl
-      setBaseWidth(200);
-    }
+  const aspectRatio = () => {
+    if (!props.photo.width || !props.photo.height) return 1;
+    return Math.max(0.5, Math.min(3, props.photo.width / props.photo.height));
   };
-
-  onMount(() => {
-    if (typeof window !== "undefined") {
-      updateBaseWidth();
-      window.addEventListener("resize", updateBaseWidth);
-    }
-  });
-
-  onCleanup(() => {
-    if (typeof window !== "undefined") {
-      window.removeEventListener("resize", updateBaseWidth);
-    }
-  });
 
   // Robustly check if image is already loaded (cached)
   function handleImgRef(el: HTMLImageElement) {
-    imgRef = el;
-    if (el) {
-      // Use microtask to ensure DOM is updated
-      setTimeout(() => {
-        if (el.complete && el.naturalWidth > 0) {
-          setLoaded(true);
-          // Calculate aspect ratio from the loaded image
-          let ratio = el.naturalWidth / el.naturalHeight;
-
-          // Constrain extreme aspect ratios
-          ratio = Math.max(0.5, Math.min(3.0, ratio));
-
-          setAspectRatio(ratio);
-        }
-      }, 0);
-    }
+    queueMicrotask(() => {
+      if (el.complete && el.naturalWidth > 0) setLoaded(true);
+    });
   }
 
-  const handleImageLoad = () => {
-    setLoaded(true);
-    if (imgRef && imgRef.naturalWidth > 0 && imgRef.naturalHeight > 0) {
-      const ratio = imgRef.naturalWidth / imgRef.naturalHeight;
-
-      setAspectRatio(ratio);
-    }
-  };
+  const handleImageLoad = () => setLoaded(true);
 
   return (
     <div
       data-reorder-photo-id={props.editing ? props.photo.id : undefined}
       onPointerDown={props.onReorderPointerDown}
       onClick={props.onClick}
-      class={`group relative flex-grow rounded shadow-lg overflow-hidden border bg-violet-900/20 flex flex-col min-w-[135px] max-w-[600px] min-h-[135px] ${props.playAnimation ?? true ? "content-fade-in" : ""} transition-[border-color,box-shadow,transform,opacity] ${
+      class={`gallery-photo-card group relative flex-grow rounded shadow-lg overflow-hidden border bg-violet-900/20 flex flex-col min-w-[135px] max-w-[600px] min-h-[135px] transition-[border-color,box-shadow,transform,opacity] ${
         props.selected
           ? "border-violet-200 ring-4 ring-inset ring-violet-400 shadow-[0_0_28px_rgba(139,92,246,0.65)]"
           : props.editing
             ? "border-zinc-700 hover:border-violet-500"
             : "border-violet-700/50"
       } ${props.editing ? "touch-none cursor-grab select-none active:cursor-grabbing" : ""} ${props.dragging ? "border-dashed border-violet-400 bg-violet-950/50 opacity-20" : ""}`}
-      style={`
-  flex-basis: ${baseWidth() * aspectRatio()}px;
-  ${props.playAnimation ?? true ? `animation-delay: ${Math.min(props.index * 0.08, 2)}s;` : ""}
-  `}
+      style={`--photo-aspect: ${aspectRatio()};`}
     >
       <div class="relative flex-1">
         {!loaded() && (
@@ -109,7 +55,9 @@ export function Photo(props: PhotoProps) {
           ref={handleImgRef}
           src={`${S3_PREFIX}${props.photo.thumbnail}`}
           alt="Gallery photo"
-          class={`w-full h-full object-cover transition-opacity duration-300 max-h-96 max-w-[600px] ${
+          width={props.photo.width || 1}
+          height={props.photo.height || 1}
+          class={`h-full w-full max-h-96 max-w-[600px] object-cover transition-opacity duration-300 ${
             loaded() ? "opacity-100" : "opacity-0"
           } transition-transform ${props.editing ? "pointer-events-none select-none" : "hover:scale-[1.02] cursor-nesw-resize"}`}
           loading="lazy"
@@ -147,7 +95,7 @@ export function Photo(props: PhotoProps) {
           </span>
         </Show>
       </div>
-      <div class="p-1 flex-shrink-0">
+      <div class="flex-shrink-0 p-1">
         <span
           class={`inline font-mono text-xs text-violet-300 ${props.editing ? "cursor-grab" : "cursor-text"}`}
         >

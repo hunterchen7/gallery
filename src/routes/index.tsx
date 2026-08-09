@@ -11,6 +11,8 @@ interface CollectionWithPhotos {
     id: string;
     url: string;
     thumbnail: string;
+    width: number | null;
+    height: number | null;
     date: string;
   }>;
 }
@@ -32,6 +34,8 @@ export default function Index() {
             id: p.id,
             url: p.url,
             thumbnail: p.thumbnail,
+            width: p.width,
+            height: p.height,
             date: p.date,
           })),
         );

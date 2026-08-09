@@ -12,6 +12,7 @@
         "db:studio": "drizzle-kit studio",
         "auth:generate": "npx tsx scripts/generate-auth-key.ts",
         "backfill:hashes": "npx tsx scripts/backfill-photo-hashes.ts",
+        "backfill:dimensions": "npx tsx scripts/backfill-photo-dimensions.ts",
         "migrate:manifests": "npx tsx scripts/migrate-manifests.ts",
         "deploy": "npx wrangler pages deploy dist"
     },

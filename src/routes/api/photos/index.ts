@@ -35,7 +35,8 @@ export async function POST(event: APIEvent) {
   }
 
   const body = await event.request.json();
-  const { url, thumbnail, contentHash, date, collectionIds } = body;
+  const { url, thumbnail, contentHash, date, collectionIds, width, height } =
+    body;
 
   if (!url || !thumbnail || !date) {
     return json(
@@ -67,6 +68,22 @@ export async function POST(event: APIEvent) {
     );
   }
 
+  const hasDimensions = width !== undefined || height !== undefined;
+  if (
+    hasDimensions &&
+    (!Number.isInteger(width) ||
+      width <= 0 ||
+      !Number.isInteger(height) ||
+      height <= 0)
+  ) {
+    return json(
+      { error: "width and height must both be positive integers" },
+      { status: 400 },
+    );
+  }
+
+  const dimensions = hasDimensions ? { width, height } : {};
+
   async function associateWithCollections(photoId: string) {
     await db
       .insert(schema.photoCollections)
@@ -79,11 +96,21 @@ export async function POST(event: APIEvent) {
       .onConflictDoNothing();
   }
 
-  const existingPhoto = await db.query.photos.findFirst({
+  let existingPhoto = await db.query.photos.findFirst({
     where: eq(schema.photos.contentHash, contentHash),
   });
 
   if (existingPhoto) {
+    if (
+      hasDimensions &&
+      (existingPhoto.width === null || existingPhoto.height === null)
+    ) {
+      [existingPhoto] = await db
+        .update(schema.photos)
+        .set(dimensions)
+        .where(eq(schema.photos.id, existingPhoto.id))
+        .returning();
+    }
     await associateWithCollections(existingPhoto.id);
     return json({ ...existingPhoto, duplicate: true });
   }
@@ -97,6 +124,7 @@ export async function POST(event: APIEvent) {
         url,
         thumbnail,
         contentHash,
+        ...dimensions,
         date: new Date(date),
       })
       .returning();
@@ -107,6 +135,17 @@ export async function POST(event: APIEvent) {
     });
     if (!photo) throw error;
     wasDuplicate = true;
+
+    if (
+      hasDimensions &&
+      (photo.width === null || photo.height === null)
+    ) {
+      [photo] = await db
+        .update(schema.photos)
+        .set(dimensions)
+        .where(eq(schema.photos.id, photo.id))
+        .returning();
+    }
   }
 
   await associateWithCollections(photo.id);

@@ -26,6 +26,8 @@ export const photos = pgTable(
     url: text("url").notNull(), // R2 filename
     thumbnail: text("thumbnail").notNull(), // R2 thumbnail filename
     contentHash: text("content_hash"), // SHA-256; null for legacy photos
+    width: integer("width"), // Source image width; nullable for legacy rows
+    height: integer("height"), // Source image height; nullable for legacy rows
     date: timestamp("date").notNull(), // Photo date from EXIF
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

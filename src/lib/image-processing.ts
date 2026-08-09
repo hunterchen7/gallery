@@ -6,6 +6,8 @@
 export interface ProcessedImage {
   original: Blob;
   thumbnail: Blob;
+  width: number;
+  height: number;
   sourceFilename: string;
   originalFilename: string;
   thumbnailFilename: string;
@@ -60,7 +62,9 @@ async function extractImageDate(file: File): Promise<Date> {
  * Generate a thumbnail from an image file
  * Resizes to max 800x800 and converts to WebP
  */
-async function generateThumbnail(file: File): Promise<Blob> {
+async function generateThumbnail(
+  file: File,
+): Promise<{ thumbnail: Blob; width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const canvas = document.createElement("canvas");
@@ -71,9 +75,15 @@ async function generateThumbnail(file: File): Promise<Blob> {
       return;
     }
 
+    const objectUrl = URL.createObjectURL(file);
+
     img.onload = () => {
+      const sourceWidth = img.naturalWidth;
+      const sourceHeight = img.naturalHeight;
+
       // Calculate new dimensions
-      let { width, height } = img;
+      let width = sourceWidth;
+      let height = sourceHeight;
       if (width > THUMBNAIL_MAX_SIZE || height > THUMBNAIL_MAX_SIZE) {
         const scale = Math.min(
           THUMBNAIL_MAX_SIZE / width,
@@ -88,10 +98,15 @@ async function generateThumbnail(file: File): Promise<Blob> {
 
       // Draw and convert to WebP
       ctx.drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(objectUrl);
       canvas.toBlob(
         (blob) => {
           if (blob) {
-            resolve(blob);
+            resolve({
+              thumbnail: blob,
+              width: sourceWidth,
+              height: sourceHeight,
+            });
           } else {
             reject(new Error("Failed to generate thumbnail"));
           }
@@ -102,10 +117,11 @@ async function generateThumbnail(file: File): Promise<Blob> {
     };
 
     img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
       reject(new Error("Failed to load image"));
     };
 
-    img.src = URL.createObjectURL(file);
+    img.src = objectUrl;
   });
 }
 
@@ -129,7 +145,7 @@ async function calculateContentHash(file: File): Promise<string> {
  * Generates thumbnail and extracts metadata
  */
 export async function processImage(file: File): Promise<ProcessedImage> {
-  const [thumbnail, date, contentHash] = await Promise.all([
+  const [thumbnailResult, date, contentHash] = await Promise.all([
     generateThumbnail(file),
     extractImageDate(file),
     calculateContentHash(file),
@@ -137,7 +153,9 @@ export async function processImage(file: File): Promise<ProcessedImage> {
 
   return {
     original: file,
-    thumbnail,
+    thumbnail: thumbnailResult.thumbnail,
+    width: thumbnailResult.width,
+    height: thumbnailResult.height,
     sourceFilename: file.name,
     originalFilename: `photos/${contentHash}`,
     thumbnailFilename: `thumbnails/${contentHash}.webp`,

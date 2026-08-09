@@ -21,7 +21,7 @@ import { getStoredAuthKey, isAuthenticated } from "~/lib/auth";
 import { GalleryActions } from "~/components/photos/GalleryActions";
 import { UploadButton } from "~/components/admin/UploadButton";
 import { type GalleryPhoto, S3_PREFIX } from "~/types/photo";
-import { useCollections, shouldPlayAnimations } from "~/lib/galleryStore";
+import { useCollections } from "~/lib/galleryStore";
 import { formatDate } from "~/utils/date";
 
 export { type GalleryPhoto } from "~/types/photo";
@@ -112,9 +112,6 @@ export function Gallery(props: GalleryProps) {
   const [message, setMessage] = createSignal<
     { type: "success" | "error"; text: string } | undefined
   >();
-  const [playAnimations] = createSignal(
-    shouldPlayAnimations(props.currentCollectionId),
-  );
   let suppressedClick: { photoId: string; until: number } | undefined;
   let pendingSlotPhotoId: string | undefined;
   let pendingSlotTimer: number | undefined;
@@ -898,7 +895,6 @@ export function Gallery(props: GalleryProps) {
                     photo={photo}
                     index={index()}
                     onClick={() => handlePhotoClick(photo, index())}
-                    playAnimation={playAnimations()}
                     editing={isAdmin()}
                     selected={selectedPhotoIds().has(photo.id)}
                     dragging={

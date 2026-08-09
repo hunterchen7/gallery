@@ -48,17 +48,10 @@ export async function POST(event: APIEvent) {
 
   const db = getDb();
 
-  // Check if collection already exists
-  const existing = await db.query.collections.findFirst({
-    where: eq(schema.collections.id, id),
-  });
-
-  if (existing) {
-    return json(
-      { error: "Collection with this id already exists" },
-      { status: 409 },
-    );
-  }
+  const nativeEvent = event.nativeEvent as typeof event.nativeEvent & {
+    waitUntil?: (promise: Promise<void>) => void;
+  };
+  const waitUntil = nativeEvent.waitUntil?.bind(nativeEvent);
 
   const [collection] = await withCollectionCacheRefresh(
     [id],
@@ -71,9 +64,20 @@ export async function POST(event: APIEvent) {
           description: description || null,
           isPrivate: isPrivate === true,
         })
+        .onConflictDoNothing({ target: schema.collections.id })
         .returning(),
-    { includePublicCollections: true },
+    {
+      includePublicCollections: isPrivate !== true,
+      waitUntil,
+    },
   );
+
+  if (!collection) {
+    return json(
+      { error: "Collection with this id already exists" },
+      { status: 409 },
+    );
+  }
 
   return json(collection, { status: 201 });
 }

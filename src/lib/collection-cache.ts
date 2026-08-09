@@ -13,7 +13,10 @@ import {
 export async function withCollectionCacheRefresh<T>(
   collectionIds: Iterable<string>,
   mutation: () => Promise<T>,
-  options: { includePublicCollections?: boolean } = {},
+  options: {
+    includePublicCollections?: boolean;
+    waitUntil?: (promise: Promise<void>) => void;
+  } = {},
 ): Promise<T> {
   const uniqueIds = [...new Set(collectionIds)].filter(Boolean);
   const snapshotKeys = uniqueIds.map(collectionSnapshotKey);
@@ -50,19 +53,38 @@ export async function withCollectionCacheRefresh<T>(
     );
   };
 
-  try {
-    for (const cacheKey of snapshotKeys) {
+  const mutationStarts = await Promise.allSettled(
+    snapshotKeys.map(async (cacheKey) => {
       const token = await beginSnapshotMutation(cacheKey);
       if (token) snapshotMutations.set(cacheKey, token);
-    }
+    }),
+  );
+  const failedStart = mutationStarts.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (failedStart) {
+    await finishSnapshotMutations();
+    throw failedStart.reason;
+  }
+
+  let result: T;
+  try {
+    result = await mutation();
   } catch (error) {
     await finishSnapshotMutations();
     throw error;
   }
 
-  try {
-    return await mutation();
-  } finally {
-    await finishSnapshotMutations();
+  const refreshPromise = finishSnapshotMutations();
+  if (!options.waitUntil) {
+    await refreshPromise;
+    return result;
   }
+
+  options.waitUntil(
+    refreshPromise.catch((error) => {
+      console.error("D1 snapshot refresh failed:", error);
+    }),
+  );
+  return result;
 }

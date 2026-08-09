@@ -1,14 +1,17 @@
 import {
   collectionSnapshotKey,
+  type CollectionListItem,
   type CollectionNavigationItem,
   type CollectionPageData,
   loadCollectionFromD1,
   loadPublicCollectionsFromD1,
+  serializeCollection,
   PUBLIC_COLLECTIONS_SNAPSHOT_KEY,
 } from "~/lib/collection-source";
 import { publishSnapshot, readSnapshot } from "~/lib/d1-snapshot-store";
 
 export type {
+  CollectionListItem,
   CollectionNavigationItem,
   CollectionPageData,
   CollectionPagePhoto,
@@ -55,7 +58,9 @@ export async function loadCollectionPage(
     collectionSnapshotKey(id),
   );
   if (snapshot.status === "hit") {
-    const collection = snapshot.payload;
+    const collection = snapshot.payload
+      ? serializeCollection(snapshot.payload)
+      : null;
     if (!collection || (collection.isPrivate && !isAdmin)) {
       return { collection: null, cacheStatus: "D1-HIT" };
     }

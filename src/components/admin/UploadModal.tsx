@@ -16,13 +16,13 @@ import {
   X,
 } from "lucide-solid";
 import { getStoredAuthKey } from "~/lib/auth";
+import type { CollectionNavigationItem } from "~/lib/collection-data";
 import { processImage, type ProcessedImage } from "~/lib/image-processing";
 import { uploadToPresignedUrl } from "~/lib/r2";
-import type { Collection } from "~/db/schema";
 import { CollectionModal } from "./CollectionModal";
 
 interface UploadModalProps {
-  collections: Collection[];
+  collections: CollectionNavigationItem[];
   defaultCollectionId?: string;
   initialFiles?: File[];
   onClose: () => void;
@@ -55,7 +55,7 @@ export function UploadModal(props: UploadModalProps) {
   const [selectedCollections, setSelectedCollections] =
     createSignal<string[]>(defaultCollections);
   const [availableCollections, setAvailableCollections] =
-    createSignal<Collection[]>(props.collections);
+    createSignal<CollectionNavigationItem[]>(props.collections);
   const [showCollectionModal, setShowCollectionModal] = createSignal(false);
   const [isDraggingOver, setIsDraggingOver] = createSignal(false);
   const [hasUploaded, setHasUploaded] = createSignal(false);
@@ -287,7 +287,8 @@ export function UploadModal(props: UploadModalProps) {
       });
       if (!response.ok) return;
 
-      const nextCollections = (await response.json()) as Collection[];
+      const nextCollections =
+        (await response.json()) as CollectionNavigationItem[];
       setAvailableCollections(nextCollections);
 
       const createdCollection = nextCollections.find(

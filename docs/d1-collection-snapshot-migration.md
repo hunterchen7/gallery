@@ -18,11 +18,15 @@ Those deferred requests never delay the current page.
 
 ## Snapshot keys
 
-- `collection:<id>` stores the complete collection page payload, including the
-  ordered photo metadata used for the grid.
+- `collection:<id>` stores only the collection fields required by the route
+  plus ordered photo IDs, object keys, dimensions, and the EXIF/capture date
+  used by the grid and lightbox. Database creation and update timestamps,
+  content hashes, and the redundant returned order scalar are omitted.
 - `public-collections` stores the lightweight public collection navigation.
 
 The payloads contain metadata only. Original images and thumbnails remain in R2.
+Legacy snapshots are projected to this shape before they are returned, while
+their stored JSON shrinks after the next invalidation and rebuild.
 
 ## Invalidation contract
 

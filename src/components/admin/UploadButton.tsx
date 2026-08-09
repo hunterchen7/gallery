@@ -1,10 +1,10 @@
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { Upload } from "lucide-solid";
+import type { CollectionNavigationItem } from "~/lib/collection-data";
 import { UploadModal } from "./UploadModal";
-import type { Collection } from "~/db/schema";
 
 interface UploadButtonProps {
-  collections: Collection[];
+  collections: CollectionNavigationItem[];
   defaultCollectionId?: string;
   onUploadComplete: () => void;
   enablePageDrop?: boolean;

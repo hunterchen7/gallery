@@ -8,28 +8,18 @@ import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import { Gallery, type GalleryPhoto } from "~/components/photos/GalleryV2";
 import { getStoredAuthKey } from "~/lib/auth";
 import type { CollectionPageData } from "~/lib/collection-data";
-import {
-  getPublicCollectionPage,
-  getPublicCollectionsPage,
-} from "~/lib/collection-query";
+import { getPublicCollectionRoute } from "~/lib/collection-query";
 
 export const route = {
-  preload: ({ params }) =>
-    Promise.all([
-      getPublicCollectionPage(params.id),
-      getPublicCollectionsPage(),
-    ]),
+  preload: ({ params }) => getPublicCollectionRoute(params.id),
 } satisfies RouteDefinition;
 
 export default function CollectionPage() {
   const params = useParams();
-  const publicCollection = createAsync(
-    () => getPublicCollectionPage(params.id),
-    { deferStream: true },
-  );
-  const publicCollections = createAsync(() => getPublicCollectionsPage(), {
+  const routeData = createAsync(() => getPublicCollectionRoute(params.id), {
     deferStream: true,
   });
+  const publicCollection = () => routeData()?.collection;
   const [adminCollection, setAdminCollection] =
     createSignal<CollectionPageData>();
   const [adminCheckComplete, setAdminCheckComplete] = createSignal(false);
@@ -139,7 +129,7 @@ export default function CollectionPage() {
         }
         currentCollectionId={collection()?.id}
         currentCollection={collection() || undefined}
-        initialCollections={publicCollections()}
+        initialCollections={routeData()?.collections}
       />
     </>
   );

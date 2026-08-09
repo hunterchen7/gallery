@@ -5,11 +5,11 @@ import {
   Download,
   Trash2,
 } from "lucide-solid";
-import type { Collection } from "~/db/schema";
+import type { CollectionNavigationItem } from "~/lib/collection-data";
 
 interface GalleryActionsProps {
   isAdmin: boolean;
-  collections: Collection[];
+  collections: CollectionNavigationItem[];
   collectionsLoaded: boolean;
   currentCollectionId?: string;
   photoCount: number;

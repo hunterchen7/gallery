@@ -42,33 +42,40 @@ export async function readD1Snapshot<T>(
   db: D1DatabaseLike,
   cacheKey: string,
 ): Promise<D1SnapshotRead<T>> {
-  const cleanup = await db
-    .prepare(
-      `DELETE FROM collection_snapshot_mutations
-       WHERE cache_key = ? AND started_at < ?`,
-    )
-    .bind(cacheKey, Date.now() - ABANDONED_MUTATION_MS)
-    .run();
-  assertSucceeded(cleanup, "mutation cleanup");
+  const selectSnapshot = () =>
+    db
+      .prepare(
+        `SELECT
+           payload,
+           generation,
+           dirty,
+           EXISTS(
+             SELECT 1
+             FROM collection_snapshot_mutations mutations
+             WHERE mutations.cache_key = collection_snapshots.cache_key
+           ) AS activeMutations
+         FROM collection_snapshots
+         WHERE cache_key = ?`,
+      )
+      .bind(cacheKey)
+      .first<SnapshotRow>();
 
-  const row = await db
-    .prepare(
-      `SELECT
-         payload,
-         generation,
-         dirty,
-         EXISTS(
-           SELECT 1
-           FROM collection_snapshot_mutations mutations
-           WHERE mutations.cache_key = collection_snapshots.cache_key
-         ) AS activeMutations
-       FROM collection_snapshots
-       WHERE cache_key = ?`,
-    )
-    .bind(cacheKey)
-    .first<SnapshotRow>();
+  let row = await selectSnapshot();
 
   if (!row) return { status: "miss", generation: 0 };
+  if (row.activeMutations) {
+    const cleanup = await db
+      .prepare(
+        `DELETE FROM collection_snapshot_mutations
+         WHERE cache_key = ? AND started_at < ?`,
+      )
+      .bind(cacheKey, Date.now() - ABANDONED_MUTATION_MS)
+      .run();
+    assertSucceeded(cleanup, "mutation cleanup");
+    row = await selectSnapshot();
+    if (!row) return { status: "miss", generation: 0 };
+  }
+
   if (row.dirty || row.activeMutations) {
     return { status: "dirty", generation: row.generation };
   }

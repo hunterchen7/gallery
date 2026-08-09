@@ -1,131 +1,107 @@
-import { and, eq } from "drizzle-orm";
-import { getDb, schema } from "~/db";
-import type { Collection } from "~/db/schema";
 import { readCollectionCache } from "~/lib/collection-cache";
+import {
+  collectionSnapshotKey,
+  type CollectionNavigationItem,
+  type CollectionPageData,
+  loadCollectionFromNeon,
+  loadPublicCollectionsFromNeon,
+  PUBLIC_COLLECTIONS_SNAPSHOT_KEY,
+  serializeCollection,
+} from "~/lib/collection-source";
+import { publishSnapshot, readSnapshot } from "~/lib/d1-snapshot-store";
 
-export interface CollectionPagePhoto {
-  id: string;
-  url: string;
-  thumbnail: string;
-  contentHash: string | null;
-  width: number | null;
-  height: number | null;
-  date: string;
-  createdAt: string;
-  order: number;
-}
-
-export interface CollectionPageData {
-  id: string;
-  name: string;
-  description: string | null;
-  isPrivate: boolean;
-  createdAt: string;
-  updatedAt: string;
-  photos: CollectionPagePhoto[];
-}
+export type {
+  CollectionNavigationItem,
+  CollectionPageData,
+  CollectionPagePhoto,
+} from "~/lib/collection-source";
 
 export interface CollectionPageResult {
   collection: CollectionPageData | null;
   cacheStatus: string;
 }
 
-export async function loadPublicCollections(): Promise<Collection[]> {
-  const db = getDb();
-  return db.query.collections.findMany({
-    where: eq(schema.collections.isPrivate, false),
-    orderBy: (collections, { asc }) => [asc(collections.name)],
-  });
+export interface CollectionRouteData {
+  collection: CollectionPageData | null;
+  collections: CollectionNavigationItem[];
 }
 
-function serializeDate(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : value;
-}
+export async function loadPublicCollections(): Promise<
+  CollectionNavigationItem[]
+> {
+  const cached = await readSnapshot<CollectionNavigationItem[]>(
+    PUBLIC_COLLECTIONS_SNAPSHOT_KEY,
+  );
+  if (cached.status === "hit") return cached.payload;
 
-function serializeCollection(collection: {
-  id: string;
-  name: string;
-  description: string | null;
-  isPrivate: boolean;
-  createdAt: Date | string;
-  updatedAt: Date | string;
-  photos: Array<{
-    id: string;
-    url: string;
-    thumbnail: string;
-    contentHash: string | null;
-    width: number | null;
-    height: number | null;
-    date: Date | string;
-    createdAt: Date | string;
-    order: number;
-  }>;
-}): CollectionPageData {
-  return {
-    id: collection.id,
-    name: collection.name,
-    description: collection.description,
-    isPrivate: collection.isPrivate,
-    createdAt: serializeDate(collection.createdAt),
-    updatedAt: serializeDate(collection.updatedAt),
-    photos: collection.photos.map((photo) => ({
-      ...photo,
-      date: serializeDate(photo.date),
-      createdAt: serializeDate(photo.createdAt),
-    })),
-  };
+  const collections = await loadPublicCollectionsFromNeon();
+  if (cached.status === "miss" || cached.status === "dirty") {
+    await publishSnapshot(
+      PUBLIC_COLLECTIONS_SNAPSHOT_KEY,
+      collections,
+      cached.generation,
+    );
+  }
+  return collections;
 }
 
 /**
- * Loads the complete payload needed by a collection route. The Durable Object
- * is authoritative when available; the database query is only a local-dev
- * fallback for environments without the binding.
+ * Loads the complete payload needed by a collection route. D1 is the primary
+ * snapshot store. The Durable Object remains a temporary rollout fallback and
+ * Neon remains authoritative for cache repair.
  */
 export async function loadCollectionPage(
   id: string,
   isAdmin = false,
 ): Promise<CollectionPageResult> {
-  const cached = await readCollectionCache(id);
-  if (cached.status === "available") {
-    const collection = cached.collection;
+  const snapshot = await readSnapshot<CollectionPageData | null>(
+    collectionSnapshotKey(id),
+  );
+  if (snapshot.status === "hit") {
+    const collection = snapshot.payload;
     if (!collection || (collection.isPrivate && !isAdmin)) {
-      return { collection: null, cacheStatus: cached.cacheStatus };
+      return { collection: null, cacheStatus: "D1-HIT" };
     }
-
-    return {
-      collection: serializeCollection(collection),
-      cacheStatus: cached.cacheStatus,
-    };
+    return { collection, cacheStatus: "D1-HIT" };
   }
 
-  const db = getDb();
-  const collection = await db.query.collections.findFirst({
-    where: isAdmin
-      ? eq(schema.collections.id, id)
-      : and(
-          eq(schema.collections.id, id),
-          eq(schema.collections.isPrivate, false),
-        ),
-    with: {
-      photoCollections: {
-        with: { photo: true },
-        orderBy: (photoCollections, { asc }) => [asc(photoCollections.order)],
-      },
-    },
-  });
+  const durable = await readCollectionCache(id);
+  let collection: CollectionPageData | null;
+  let cacheStatus: string;
 
-  if (!collection) {
-    return { collection: null, cacheStatus: "UNAVAILABLE" };
+  if (durable.status === "available") {
+    collection = durable.collection
+      ? serializeCollection(durable.collection)
+      : null;
+    cacheStatus = `D1-${snapshot.status.toUpperCase()}/DO-${durable.cacheStatus}`;
+  } else {
+    collection = await loadCollectionFromNeon(id);
+    cacheStatus =
+      snapshot.status === "unavailable"
+        ? "D1-UNAVAILABLE/NEON"
+        : `D1-${snapshot.status.toUpperCase()}/NEON`;
   }
 
-  return {
-    collection: serializeCollection({
-      ...collection,
-      photos: collection.photoCollections.map((photoCollection) => ({
-        ...photoCollection.photo,
-        order: photoCollection.order,
-      })),
-    }),
-    cacheStatus: "UNAVAILABLE",
-  };
+  if (snapshot.status === "miss" || snapshot.status === "dirty") {
+    await publishSnapshot(
+      collectionSnapshotKey(id),
+      collection,
+      snapshot.generation,
+    );
+  }
+
+  if (!collection || (collection.isPrivate && !isAdmin)) {
+    return { collection: null, cacheStatus };
+  }
+  return { collection, cacheStatus };
+}
+
+export async function loadPublicCollectionRoute(
+  id: string,
+): Promise<CollectionRouteData> {
+  const [page, collections] = await Promise.all([
+    loadCollectionPage(id),
+    loadPublicCollections(),
+  ]);
+  return { collection: page.collection, collections };
 }

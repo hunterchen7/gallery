@@ -1,17 +1,8 @@
 import { query } from "@solidjs/router";
-import {
-  loadCollectionPage,
-  loadPublicCollections,
-} from "~/lib/collection-data";
+import { loadPublicCollectionRoute } from "~/lib/collection-data";
 
-export const getPublicCollectionPage = query(async (id: string) => {
+export const getPublicCollectionRoute = query(async (id: string) => {
   "use server";
 
-  return (await loadCollectionPage(id)).collection;
-}, "public-collection-page");
-
-export const getPublicCollectionsPage = query(async () => {
-  "use server";
-
-  return loadPublicCollections();
-}, "public-collections-page");
+  return loadPublicCollectionRoute(id);
+}, "public-collection-route");

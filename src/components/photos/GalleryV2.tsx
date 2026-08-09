@@ -28,12 +28,9 @@ import { getStoredAuthKey, isAuthenticated } from "~/lib/auth";
 import { GalleryActions } from "~/components/photos/GalleryActions";
 import { UploadButton } from "~/components/admin/UploadButton";
 import { type GalleryPhoto, S3_PREFIX } from "~/types/photo";
-import type { Collection } from "~/db/schema";
+import type { CollectionNavigationItem } from "~/lib/collection-data";
 import { useCollections } from "~/lib/galleryStore";
-import {
-  getPublicCollectionPage,
-  getPublicCollectionsPage,
-} from "~/lib/collection-query";
+import { getPublicCollectionRoute } from "~/lib/collection-query";
 import { formatDate } from "~/utils/date";
 
 export { type GalleryPhoto } from "~/types/photo";
@@ -43,7 +40,7 @@ export interface GalleryProps {
   caption: JSX.Element;
   currentCollectionId?: string;
   currentCollection?: EditableCollection;
-  initialCollections?: Collection[];
+  initialCollections?: CollectionNavigationItem[];
   loading?: boolean;
 }
 
@@ -201,11 +198,13 @@ export function Gallery(props: GalleryProps) {
   });
 
   function invalidateCollectionPage(collectionId: string) {
-    void revalidate(getPublicCollectionPage.keyFor(collectionId));
+    void revalidate(getPublicCollectionRoute.keyFor(collectionId));
   }
 
   function invalidateCollectionList() {
-    void revalidate(getPublicCollectionsPage.key);
+    if (props.currentCollectionId) {
+      invalidateCollectionPage(props.currentCollectionId);
+    }
   }
 
   function updateUrlWithImage(index: number | null) {

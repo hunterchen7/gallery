@@ -60,16 +60,19 @@ export async function POST(event: APIEvent) {
     );
   }
 
-  const [collection] = await withCollectionCacheRefresh([id], () =>
-    db
-      .insert(schema.collections)
-      .values({
-        id,
-        name,
-        description: description || null,
-        isPrivate: isPrivate === true,
-      })
-      .returning(),
+  const [collection] = await withCollectionCacheRefresh(
+    [id],
+    () =>
+      db
+        .insert(schema.collections)
+        .values({
+          id,
+          name,
+          description: description || null,
+          isPrivate: isPrivate === true,
+        })
+        .returning(),
+    { includePublicCollections: true },
   );
 
   return json(collection, { status: 201 });

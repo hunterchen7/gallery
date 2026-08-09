@@ -44,17 +44,20 @@ export async function PUT(event: APIEvent) {
 
   const db = getDb();
 
-  const [updated] = await withCollectionCacheRefresh([id], () =>
-    db
-      .update(schema.collections)
-      .set({
-        name: name || undefined,
-        description: description,
-        isPrivate: typeof isPrivate === "boolean" ? isPrivate : undefined,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.collections.id, id))
-      .returning(),
+  const [updated] = await withCollectionCacheRefresh(
+    [id],
+    () =>
+      db
+        .update(schema.collections)
+        .set({
+          name: name || undefined,
+          description: description,
+          isPrivate: typeof isPrivate === "boolean" ? isPrivate : undefined,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.collections.id, id))
+        .returning(),
+    { includePublicCollections: true },
   );
 
   if (!updated) {
@@ -80,11 +83,14 @@ export async function DELETE(event: APIEvent) {
   const id = event.params.id;
   const db = getDb();
 
-  const [deleted] = await withCollectionCacheRefresh([id], () =>
-    db
-      .delete(schema.collections)
-      .where(eq(schema.collections.id, id))
-      .returning(),
+  const [deleted] = await withCollectionCacheRefresh(
+    [id],
+    () =>
+      db
+        .delete(schema.collections)
+        .where(eq(schema.collections.id, id))
+        .returning(),
+    { includePublicCollections: true },
   );
 
   if (!deleted) {

@@ -10,16 +10,16 @@ import {
   Plus,
 } from "lucide-solid";
 import { CollectionModal } from "~/components/admin/CollectionModal";
-import type { Collection } from "~/db/schema";
 import { getStoredAuthKey, isAuthenticated } from "~/lib/auth";
+import type { CollectionListItem } from "~/lib/collection-data";
 
 export default function AdminPage() {
   const [isAuthed, setIsAuthed] = createSignal(false);
-  const [collections, setCollections] = createSignal<Collection[]>([]);
+  const [collections, setCollections] = createSignal<CollectionListItem[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal("");
   const [collectionModal, setCollectionModal] = createSignal<
-    "new" | Collection | null
+    "new" | CollectionListItem | null
   >(null);
 
   onMount(() => {

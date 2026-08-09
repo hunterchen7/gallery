@@ -3,6 +3,7 @@ import type { APIEvent } from "@solidjs/start/server";
 import { getDb, schema } from "~/db";
 import { eq } from "drizzle-orm";
 import { withCollectionCacheRefresh } from "~/lib/collection-cache";
+import type { CollectionListItem } from "~/lib/collection-data";
 
 /**
  * GET /api/collections - Get all collections
@@ -11,10 +12,17 @@ import { withCollectionCacheRefresh } from "~/lib/collection-cache";
 export async function GET(event: APIEvent) {
   const db = getDb();
   const isAdmin = event.request.headers.get("X-Auth-Key") === process.env.API_KEY;
-  const collections = await db.query.collections.findMany({
-    where: isAdmin ? undefined : eq(schema.collections.isPrivate, false),
-    orderBy: (collections, { asc }) => [asc(collections.name)],
-  });
+  const collections: CollectionListItem[] =
+    await db.query.collections.findMany({
+      columns: {
+        id: true,
+        name: true,
+        description: true,
+        isPrivate: true,
+      },
+      where: isAdmin ? undefined : eq(schema.collections.isPrivate, false),
+      orderBy: (collections, { asc }) => [asc(collections.name)],
+    });
   return json(collections);
 }
 

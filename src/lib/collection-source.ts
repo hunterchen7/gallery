@@ -7,16 +7,17 @@ export interface CollectionNavigationItem {
   isPrivate: boolean;
 }
 
+export interface CollectionListItem extends CollectionNavigationItem {
+  description: string | null;
+}
+
 export interface CollectionPagePhoto {
   id: string;
   url: string;
   thumbnail: string;
-  contentHash: string | null;
   width: number | null;
   height: number | null;
   date: string;
-  createdAt: string;
-  order: number;
 }
 
 export interface CollectionPageData {
@@ -24,8 +25,6 @@ export interface CollectionPageData {
   name: string;
   description: string | null;
   isPrivate: boolean;
-  createdAt: string;
-  updatedAt: string;
   photos: CollectionPagePhoto[];
 }
 
@@ -44,18 +43,13 @@ export function serializeCollection(collection: {
   name: string;
   description: string | null;
   isPrivate: boolean;
-  createdAt: Date | string;
-  updatedAt: Date | string;
   photos: Array<{
     id: string;
     url: string;
     thumbnail: string;
-    contentHash: string | null;
     width: number | null;
     height: number | null;
     date: Date | string;
-    createdAt: Date | string;
-    order: number;
   }>;
 }): CollectionPageData {
   return {
@@ -63,12 +57,13 @@ export function serializeCollection(collection: {
     name: collection.name,
     description: collection.description,
     isPrivate: collection.isPrivate,
-    createdAt: serializeDate(collection.createdAt),
-    updatedAt: serializeDate(collection.updatedAt),
     photos: collection.photos.map((photo) => ({
-      ...photo,
+      id: photo.id,
+      url: photo.url,
+      thumbnail: photo.thumbnail,
+      width: photo.width,
+      height: photo.height,
       date: serializeDate(photo.date),
-      createdAt: serializeDate(photo.createdAt),
     })),
   };
 }
@@ -78,10 +73,28 @@ export async function loadCollectionFromD1(
 ): Promise<CollectionPageData | null> {
   const db = getDb();
   const collection = await db.query.collections.findFirst({
+    columns: {
+      id: true,
+      name: true,
+      description: true,
+      isPrivate: true,
+    },
     where: eq(schema.collections.id, id),
     with: {
       photoCollections: {
-        with: { photo: true },
+        columns: {},
+        with: {
+          photo: {
+            columns: {
+              id: true,
+              url: true,
+              thumbnail: true,
+              width: true,
+              height: true,
+              date: true,
+            },
+          },
+        },
         orderBy: (photoCollections, { asc }) => [asc(photoCollections.order)],
       },
     },
@@ -90,10 +103,9 @@ export async function loadCollectionFromD1(
   if (!collection) return null;
   return serializeCollection({
     ...collection,
-    photos: collection.photoCollections.map((photoCollection) => ({
-      ...photoCollection.photo,
-      order: photoCollection.order,
-    })),
+    photos: collection.photoCollections.map(
+      (photoCollection) => photoCollection.photo,
+    ),
   });
 }
 

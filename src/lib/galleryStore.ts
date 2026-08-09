@@ -1,9 +1,11 @@
 import { createSignal } from "solid-js";
-import type { Collection } from "~/db/schema";
 import { getStoredAuthKey } from "~/lib/auth";
+import type { CollectionNavigationItem } from "~/lib/collection-data";
 
 // Shared store for collections (cached across navigation)
-const [collections, setCollections] = createSignal<Collection[]>([]);
+const [collections, setCollections] = createSignal<CollectionNavigationItem[]>(
+  [],
+);
 const [collectionsLoaded, setCollectionsLoaded] = createSignal(false);
 let loadedForAdmin = false;
 

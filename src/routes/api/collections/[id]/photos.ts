@@ -27,6 +27,7 @@ export async function POST(event: APIEvent) {
 
   const db = getDb();
   const collection = await db.query.collections.findFirst({
+    columns: { id: true },
     where: eq(schema.collections.id, collectionId),
   });
   if (!collection) {

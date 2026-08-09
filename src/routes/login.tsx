@@ -89,10 +89,10 @@ export default function LoginPage() {
                   Manage galleries
                 </button>
                 <button
-                  onClick={() => navigate("/?edit=1")}
+                  onClick={() => navigate("/")}
                   class="px-6 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg transition-colors"
                 >
-                  Open gallery editor
+                  Open gallery
                 </button>
                 <button
                   onClick={handleLogout}

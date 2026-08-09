@@ -3,7 +3,6 @@ import { A } from "@solidjs/router";
 import {
   ArrowLeft,
   Eye,
-  GripVertical,
   Images,
   Loader2,
   Lock,
@@ -73,7 +72,7 @@ export default function AdminPage() {
                 All galleries
               </h1>
               <p class="mt-1 text-xs text-zinc-500 sm:text-sm">
-                Create, edit, open, and reorder every collection.
+                Create, open, and manage every gallery.
               </p>
             </div>
           </div>
@@ -156,14 +155,7 @@ export default function AdminPage() {
                             class="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-violet-200"
                           >
                             <Eye class="h-4 w-4" />
-                            View
-                          </A>
-                          <A
-                            href={`/${collection.id}?edit=1`}
-                            class="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-violet-200"
-                          >
-                            <GripVertical class="h-4 w-4" />
-                            Edit photos
+                            Open gallery
                           </A>
                           <button
                             onClick={() => setCollectionModal(collection)}

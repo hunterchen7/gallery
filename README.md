@@ -64,26 +64,32 @@ overlapping mutation rebuilds the snapshot. The collection API exposes the
 result in its `X-Collection-Cache` response header (`HIT`, `MISS`, `BYPASS`, or
 `UNAVAILABLE`).
 
-The regular `npm run dev` server does not emulate the Pages Durable Object
-binding and automatically falls back to Neon. To provision the production
-cache without changing the existing Pages configuration:
+Production is deployed as one Cloudflare Worker containing the SolidStart app,
+static assets, API routes, and the collection Durable Object. The regular
+`npm run dev` server still uses Neon directly; `npm run preview` builds and runs
+the complete Worker locally.
+
+Deploy the unified Worker manually with:
 
 ```bash
-npm run cache:deploy
-npm run cache:secret
+npm run deploy
 ```
 
-Enter the same `DATABASE_URL` used by the Pages project when prompted. Then add
-a Durable Object binding to both the production and preview environments of the
-`hunter-gallery` Pages project:
+The Worker requires the same runtime secrets as the former Pages project:
+`DATABASE_URL`, `API_KEY`, `ENCRYPTED_API_KEY`, `R2_ACCOUNT_ID`,
+`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_BUCKET_NAME`.
 
-- Variable name: `COLLECTION_CACHE`
-- Worker: `gallery-collection-cache`
-- Durable Object class: `CollectionCache`
+For automatic deployments, connect `hunterchen7/gallery` to
+`hunter-gallery-worker` in Cloudflare Workers Builds with these settings:
 
-Redeploy the Pages project after adding the binding. Do not add a new root
-Wrangler configuration without first downloading and preserving the current
-Pages settings; Pages treats that file as the complete configuration source.
+- Production branch: `main`
+- Build command: `npm run build`
+- Deploy command: `npx wrangler deploy`
+- Non-production deploy command: `npx wrangler versions upload`
+
+Keep the old `hunter-gallery` Pages project until the Worker has been verified
+and both gallery custom domains have been moved. It provides a quick rollback
+during the migration.
 
 ## Structure
 

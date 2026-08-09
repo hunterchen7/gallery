@@ -9,7 +9,6 @@ import {
   publishD1Snapshot,
   readD1Snapshot,
 } from "../src/lib/d1-snapshot-operations.ts";
-import { migrateNeonToD1 } from "../src/lib/neon-to-d1-migration.ts";
 
 function json(body, status = 200) {
   return Response.json(body, { status });
@@ -19,32 +18,6 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/health") return new Response("ok");
-
-    if (
-      url.pathname === "/migrations/neon-to-d1" &&
-      request.method === "POST"
-    ) {
-      if (request.headers.get("X-Auth-Key") !== env.API_KEY) {
-        return json({ error: "Unauthorized" }, 401);
-      }
-      try {
-        return json(
-          await migrateNeonToD1(
-            env.COLLECTION_SNAPSHOTS,
-            env.DATABASE_URL,
-          ),
-        );
-      } catch (error) {
-        console.error("Neon to D1 migration failed:", error);
-        return json(
-          {
-            error:
-              error instanceof Error ? error.message : "Database migration failed",
-          },
-          500,
-        );
-      }
-    }
 
     if (url.pathname === "/d1" && request.method === "POST") {
       try {

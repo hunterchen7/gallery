@@ -1,7 +1,7 @@
 /**
  * Development-only HTTP bridge to remote Cloudflare bindings. Wrangler runs
- * this as a remote preview so the local Vinxi server can use the same D1 and
- * Durable Object state as production without a Worker build.
+ * this as a remote preview so the local Vinxi server can use the same D1 state
+ * as production without a Worker build.
  */
 import {
   beginD1SnapshotMutation,
@@ -68,11 +68,6 @@ export default {
       return json({ error: "Method not allowed" }, 405);
     }
 
-    const match = url.pathname.match(/^\/collections\/([^/]+)$/);
-    if (!match) return new Response("Not found", { status: 404 });
-
-    const collectionId = decodeURIComponent(match[1]);
-    const id = env.COLLECTION_CACHE.idFromName(collectionId);
-    return env.COLLECTION_CACHE.get(id).fetch(request);
+    return new Response("Not found", { status: 404 });
   },
 };

@@ -10,14 +10,5 @@
       "database_id": "3a4ff108-6331-4724-9b15-f681ed5f850d",
       "migrations_dir": "d1/migrations"
     }
-  ],
-  "durable_objects": {
-    "bindings": [
-      {
-        "name": "COLLECTION_CACHE",
-        "class_name": "CollectionCache",
-        "script_name": "hunter-gallery-worker"
-      }
-    ]
-  }
+  ]
 }

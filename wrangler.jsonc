@@ -18,20 +18,6 @@
       "migrations_dir": "d1/migrations"
     }
   ],
-  "durable_objects": {
-    "bindings": [
-      {
-        "name": "COLLECTION_CACHE",
-        "class_name": "CollectionCache"
-      }
-    ]
-  },
-  "migrations": [
-    {
-      "tag": "v1",
-      "new_sqlite_classes": ["CollectionCache"]
-    }
-  ],
   "observability": {
     "enabled": true
   }

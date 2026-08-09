@@ -38,16 +38,12 @@ If D1 cannot be reached, reads fall back to Neon. Once D1 is configured for a
 mutation, invalidation failure stops that mutation so a clean stale snapshot can
 never outlive a successful Neon write.
 
-## Rollout
+## Completed rollout
 
-1. Create the D1 database and apply its migrations while retaining the Durable
-   Object binding.
-2. Deploy D1 reads with Durable Object and Neon fallbacks. Cache misses backfill
-   D1 from Neon.
-3. Backfill all current collection and navigation snapshots, then make D1 the
-   primary read path.
-4. Remove the Durable Object class and binding after production reads and
-   invalidations are confirmed.
+1. Created the D1 database and applied its schema migration.
+2. Backfilled all current collection and navigation snapshots from Neon.
+3. Made D1 the primary read path, with Neon repairing missing or dirty entries.
+4. Removed the former Durable Object class, binding, and read fallback.
 
-Rollback during steps 1-3 is a code deploy: the Durable Object namespace and
-Neon data are unchanged.
+Neon remains authoritative, so a rollback can bypass D1 without moving or
+transforming collection data.

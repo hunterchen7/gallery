@@ -1,4 +1,3 @@
-import { readCollectionCache } from "~/lib/collection-cache";
 import {
   collectionSnapshotKey,
   type CollectionNavigationItem,
@@ -6,7 +5,6 @@ import {
   loadCollectionFromNeon,
   loadPublicCollectionsFromNeon,
   PUBLIC_COLLECTIONS_SNAPSHOT_KEY,
-  serializeCollection,
 } from "~/lib/collection-source";
 import { publishSnapshot, readSnapshot } from "~/lib/d1-snapshot-store";
 
@@ -47,8 +45,7 @@ export async function loadPublicCollections(): Promise<
 
 /**
  * Loads the complete payload needed by a collection route. D1 is the primary
- * snapshot store. The Durable Object remains a temporary rollout fallback and
- * Neon remains authoritative for cache repair.
+ * snapshot store and Neon remains authoritative for cache repair.
  */
 export async function loadCollectionPage(
   id: string,
@@ -65,22 +62,11 @@ export async function loadCollectionPage(
     return { collection, cacheStatus: "D1-HIT" };
   }
 
-  const durable = await readCollectionCache(id);
-  let collection: CollectionPageData | null;
-  let cacheStatus: string;
-
-  if (durable.status === "available") {
-    collection = durable.collection
-      ? serializeCollection(durable.collection)
-      : null;
-    cacheStatus = `D1-${snapshot.status.toUpperCase()}/DO-${durable.cacheStatus}`;
-  } else {
-    collection = await loadCollectionFromNeon(id);
-    cacheStatus =
-      snapshot.status === "unavailable"
-        ? "D1-UNAVAILABLE/NEON"
-        : `D1-${snapshot.status.toUpperCase()}/NEON`;
-  }
+  const collection = await loadCollectionFromNeon(id);
+  const cacheStatus =
+    snapshot.status === "unavailable"
+      ? "D1-UNAVAILABLE/NEON"
+      : `D1-${snapshot.status.toUpperCase()}/NEON`;
 
   if (snapshot.status === "miss" || snapshot.status === "dirty") {
     await publishSnapshot(

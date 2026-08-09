@@ -27,10 +27,9 @@ npm run dev
 ```
 
 This starts both the Vinxi app and a Wrangler remote-development bridge on
-`127.0.0.1:8787`. The bridge binds to the deployed D1 snapshot database and the
-temporary Durable Object fallback, so local development shares production cache
-invalidation. Use `npm run dev:app` only when intentionally running Vinxi
-without the cache bridge.
+`127.0.0.1:8787`. The bridge binds to the deployed D1 snapshot database, so
+local development shares production cache invalidation. Use `npm run dev:app`
+only when intentionally running Vinxi without the cache bridge.
 
 Apply schema changes after pulling a version that updates `src/db/schema.ts`:
 
@@ -71,9 +70,8 @@ a collection-metadata loading state.
 
 All app mutations mark affected D1 snapshots dirty before changing Neon. The
 final overlapping mutation rebuilds each snapshot, and a generation check keeps
-an older refresh from overwriting a newer invalidation. The former per-collection
-Durable Objects remain bound temporarily as a cache-miss and rollback fallback.
-See `docs/d1-collection-snapshot-migration.md` for the rollout contract.
+an older refresh from overwriting a newer invalidation. See
+`docs/d1-collection-snapshot-migration.md` for the migration contract.
 
 Apply D1 snapshot schema migrations with:
 
@@ -82,9 +80,9 @@ npx wrangler d1 migrations apply gallery-collection-snapshots --remote
 ```
 
 Production is deployed as one Cloudflare Worker containing the SolidStart app,
-static assets, API routes, the D1 binding, and the temporary collection Durable
-Object fallback. `npm run dev` accesses the remote bindings without a Worker
-build. `npm run preview` builds and runs the complete Worker locally.
+static assets, API routes, and the D1 binding. `npm run dev` accesses the remote
+binding without a Worker build. `npm run preview` builds and runs the complete
+Worker locally.
 
 Deploy the unified Worker manually with:
 

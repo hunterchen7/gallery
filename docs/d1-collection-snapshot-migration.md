@@ -43,7 +43,8 @@ never outlive a successful Neon write.
 1. Created the D1 database and applied its schema migration.
 2. Backfilled all current collection and navigation snapshots from Neon.
 3. Made D1 the primary read path, with Neon repairing missing or dirty entries.
-4. Removed the former Durable Object class, binding, and read fallback.
+4. Removed the former Durable Object class, binding, read fallback, and cached
+   instances with the Cloudflare `v2` delete-class migration.
 
 Neon remains authoritative, so a rollback can bypass D1 without moving or
 transforming collection data.

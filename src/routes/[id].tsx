@@ -88,7 +88,7 @@ export default function CollectionPage() {
       <Show when={collection()}>
         {(data) => (
           <>
-            <Title>{data().name} - Gallery</Title>
+            <Title>{data().name} - gallery</Title>
             <Meta property="og:title" content={data().name} />
             <Show when={data().description}>
               <Meta property="og:description" content={data().description!} />

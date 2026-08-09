@@ -61,28 +61,11 @@ const SLOT_ANIMATION_MS = 220;
 function GalleryShell(props: { title: JSX.Element; children: JSX.Element }) {
   return (
     <main class="mx-auto pb-12 text-center font-mono text-violet-200">
-      <h1 class="mx-auto mb-8 mt-2 flex h-12 max-w-[14rem] items-center justify-center text-2xl font-thin leading-tight sm:text-4xl md:mt-12 md:max-w-none">
+      <h1 class="mx-auto mb-1 mt-2 flex h-12 max-w-[14rem] items-center justify-center text-2xl font-thin leading-tight sm:text-4xl md:mt-6 md:max-w-none">
         {props.title}
       </h1>
       {props.children}
     </main>
-  );
-}
-
-function CollectionLink(props: {
-  href: string;
-  children: JSX.Element;
-  active?: boolean;
-}) {
-  return (
-    <A
-      href={props.href}
-      class={`underline hover:text-violet-300 ${
-        props.active ? "font-medium text-violet-200" : "text-violet-400"
-      }`}
-    >
-      {props.children}
-    </A>
   );
 }
 
@@ -796,8 +779,8 @@ export function Gallery(props: GalleryProps) {
         )}
       </Show>
 
-      <div class="mx-4 mb-4 text-xs text-violet-200 md:text-sm">
-        <div class="mx-auto h-20 max-w-2xl px-3">
+      <div class="mx-4 mb-2 text-xs text-violet-200 md:text-sm">
+        <div class="relative mx-auto h-8 max-w-2xl px-3">
           <Show
             when={isAdmin() && props.currentCollectionId}
             fallback={
@@ -805,72 +788,36 @@ export function Gallery(props: GalleryProps) {
                 when={props.currentCollection}
                 fallback={props.caption}
               >
-                <p class="flex h-16 items-center justify-center text-zinc-400">
+                <p class="h-8 truncate py-1.5 text-center text-zinc-400">
                   {displayDescription()}
                 </p>
               </Show>
             }
           >
-            <textarea
+            <input
+              type="text"
               value={draftDescription()}
               onInput={(event) =>
                 setDraftDescription(event.currentTarget.value)
               }
               placeholder="Add a description"
-              class="h-14 w-full resize-none rounded-lg border border-transparent bg-transparent px-3 py-2 text-center text-sm text-violet-200 outline-none transition-colors placeholder:text-zinc-600 hover:border-zinc-800 focus:border-violet-600 focus:bg-zinc-950/60"
+              class="h-8 w-full rounded-md border border-transparent bg-transparent px-3 text-center text-sm text-violet-200 outline-none transition-colors placeholder:text-zinc-600 hover:border-zinc-800 focus:border-violet-600 focus:bg-zinc-950/60"
               aria-label="Gallery description"
             />
-            <div class="h-5 pt-1 text-xs">
-              <Show when={detailsStatus()}>
-                {(status) => (
-                  <span
-                    class={
-                      status().type === "error"
-                        ? "text-red-400"
-                        : "text-green-400"
-                    }
-                  >
-                    {status().text}
-                  </span>
-                )}
-              </Show>
-            </div>
-          </Show>
-        </div>
-
-        <div class="mt-2 flex h-10 items-center justify-center gap-2 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <span class="shrink-0">collections:</span>
-          <Show
-            when={collectionsLoaded() && collections().length > 0}
-            fallback={
-              <Show when={!collectionsLoaded()}>
-                <span class="text-zinc-500">loading...</span>
-              </Show>
-            }
-          >
-            <For each={collections()}>
-              {(collection) => (
-                <CollectionLink
-                  href={`/${collection.id}`}
-                  active={props.currentCollectionId === collection.id}
-                >
-                  {collection.name}
-                </CollectionLink>
-              )}
-            </For>
           </Show>
         </div>
 
         <GalleryActions
           isAdmin={isAdmin()}
           collections={collections()}
+          collectionsLoaded={collectionsLoaded()}
           currentCollectionId={props.currentCollectionId}
           photoCount={photos().length}
           selectedCount={selectedPhotoIds().size}
           canUndo={canUndo()}
           canRedo={canRedo()}
           busy={busy() || savingDetails()}
-          message={message()}
+          message={detailsStatus() || message()}
           onSelectAll={handleSelectAll}
           onDownloadSelected={downloadSelectedPhotos}
           onAddToCollection={addSelectedToCollection}
@@ -879,7 +826,7 @@ export function Gallery(props: GalleryProps) {
           onRedo={redoLocalAction}
         />
 
-        <div class="w-fill p-1 sm:p-2 md:p-4">
+        <div class="w-fill p-1 sm:p-2">
           <Show
             when={!props.loading}
             fallback={

@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, Show } from "solid-js";
+import { A } from "@solidjs/router";
 import {
   CopyPlus,
   Download,
@@ -11,6 +12,7 @@ import type { Collection } from "~/db/schema";
 interface GalleryActionsProps {
   isAdmin: boolean;
   collections: Collection[];
+  collectionsLoaded: boolean;
   currentCollectionId?: string;
   photoCount: number;
   selectedCount: number;
@@ -41,9 +43,65 @@ export function GalleryActions(props: GalleryActionsProps) {
   });
 
   return (
-    <section class="relative mx-auto h-16 max-w-5xl text-left">
+    <section class="relative mx-auto h-10 max-w-5xl text-left">
       <div
-        class={`absolute inset-x-0 top-0 flex h-11 items-center gap-2 overflow-x-auto px-1 pr-20 transition-opacity duration-150 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+        class={`absolute inset-0 flex items-center justify-center gap-2 overflow-x-auto whitespace-nowrap px-1 transition-opacity duration-150 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+          props.selectedCount === 0
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0"
+        }`}
+        aria-hidden={props.selectedCount > 0}
+      >
+        <span class="shrink-0">collections:</span>
+        <Show
+          when={props.collectionsLoaded && props.collections.length > 0}
+          fallback={
+            <Show when={!props.collectionsLoaded}>
+              <span class="text-zinc-500">loading...</span>
+            </Show>
+          }
+        >
+          <For each={props.collections}>
+            {(collection) => (
+              <A
+                href={`/${collection.id}`}
+                class={`shrink-0 underline hover:text-violet-300 ${
+                  props.currentCollectionId === collection.id
+                    ? "font-medium text-violet-200"
+                    : "text-violet-400"
+                }`}
+              >
+                {collection.name}
+              </A>
+            )}
+          </For>
+        </Show>
+
+        <Show when={props.isAdmin}>
+          <span class="mx-1 h-4 w-px shrink-0 bg-zinc-700" />
+          <button
+            onClick={props.onUndo}
+            disabled={props.busy || !props.canUndo}
+            class="shrink-0 rounded-md p-1.5 text-violet-300 hover:bg-zinc-800 disabled:text-zinc-700 disabled:hover:bg-transparent"
+            title="Undo (⌘/Ctrl+Z)"
+            aria-label="Undo"
+          >
+            <Undo2 class="h-4 w-4" />
+          </button>
+          <button
+            onClick={props.onRedo}
+            disabled={props.busy || !props.canRedo}
+            class="shrink-0 rounded-md p-1.5 text-violet-300 hover:bg-zinc-800 disabled:text-zinc-700 disabled:hover:bg-transparent"
+            title="Redo (⌘/Ctrl+Shift+Z)"
+            aria-label="Redo"
+          >
+            <Redo2 class="h-4 w-4" />
+          </button>
+        </Show>
+      </div>
+
+      <div
+        class={`absolute inset-0 flex items-center justify-center gap-2 overflow-x-auto whitespace-nowrap px-1 transition-opacity duration-150 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
           props.selectedCount > 0
             ? "pointer-events-auto opacity-100"
             : "pointer-events-none opacity-0"
@@ -53,19 +111,19 @@ export function GalleryActions(props: GalleryActionsProps) {
         <button
           onClick={props.onSelectAll}
           disabled={props.photoCount === 0}
-          class="shrink-0 rounded-lg px-2.5 py-2 text-sm text-violet-300 hover:bg-zinc-800 disabled:opacity-40"
+          class="shrink-0 rounded-md px-2 py-1.5 text-sm text-violet-300 hover:bg-zinc-800 disabled:opacity-40"
         >
           {props.selectedCount === props.photoCount && props.photoCount > 0
             ? "Deselect all"
             : "Select all"}
         </button>
-        <span class="w-20 shrink-0 text-center text-xs text-zinc-500">
+        <span class="shrink-0 text-center text-xs text-zinc-500">
           {props.selectedCount} selected
         </span>
         <button
           onClick={props.onDownloadSelected}
           disabled={props.busy}
-          class="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm text-violet-300 hover:bg-zinc-800 disabled:opacity-40"
+          class="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-violet-300 hover:bg-zinc-800 disabled:opacity-40"
         >
           <Download class="h-4 w-4" />
           Download
@@ -77,7 +135,7 @@ export function GalleryActions(props: GalleryActionsProps) {
             onChange={(event) =>
               setTargetCollectionId(event.currentTarget.value)
             }
-            class="max-w-40 shrink-0 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2 text-sm text-violet-100 focus:border-violet-500 focus:outline-none"
+            class="max-w-40 shrink-0 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-violet-100 focus:border-violet-500 focus:outline-none"
             aria-label="Target gallery"
           >
             <For each={targetCollections()}>
@@ -89,7 +147,7 @@ export function GalleryActions(props: GalleryActionsProps) {
           <button
             onClick={() => props.onAddToCollection(targetCollectionId())}
             disabled={props.busy || !targetCollectionId()}
-            class="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm text-sky-300 hover:bg-sky-500/15 disabled:opacity-40"
+            class="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-sky-300 hover:bg-sky-500/15 disabled:opacity-40"
           >
             <CopyPlus class="h-4 w-4" />
             Add
@@ -97,20 +155,16 @@ export function GalleryActions(props: GalleryActionsProps) {
           <button
             onClick={props.onRemoveFromCollection}
             disabled={props.busy || !props.currentCollectionId}
-            class="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm text-red-300 hover:bg-red-500/15 disabled:opacity-40"
+            class="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-red-300 hover:bg-red-500/15 disabled:opacity-40"
           >
             <Trash2 class="h-4 w-4" />
             Remove
           </button>
-        </Show>
-      </div>
-
-      <Show when={props.isAdmin}>
-        <div class="absolute right-1 top-0 flex h-11 items-center gap-1">
+          <span class="mx-1 h-4 w-px shrink-0 bg-zinc-700" />
           <button
             onClick={props.onUndo}
             disabled={props.busy || !props.canUndo}
-            class="rounded-lg p-2 text-violet-300 hover:bg-zinc-800 disabled:text-zinc-700 disabled:hover:bg-transparent"
+            class="shrink-0 rounded-md p-1.5 text-violet-300 hover:bg-zinc-800 disabled:text-zinc-700 disabled:hover:bg-transparent"
             title="Undo (⌘/Ctrl+Z)"
             aria-label="Undo"
           >
@@ -119,28 +173,26 @@ export function GalleryActions(props: GalleryActionsProps) {
           <button
             onClick={props.onRedo}
             disabled={props.busy || !props.canRedo}
-            class="rounded-lg p-2 text-violet-300 hover:bg-zinc-800 disabled:text-zinc-700 disabled:hover:bg-transparent"
+            class="shrink-0 rounded-md p-1.5 text-violet-300 hover:bg-zinc-800 disabled:text-zinc-700 disabled:hover:bg-transparent"
             title="Redo (⌘/Ctrl+Shift+Z)"
             aria-label="Redo"
           >
             <Redo2 class="h-4 w-4" />
           </button>
-        </div>
-      </Show>
-
-      <div class="absolute inset-x-0 bottom-0 h-5 px-2 text-center text-xs">
-        <Show when={props.message}>
-          {(message) => (
-            <span
-              class={
-                message().type === "success" ? "text-green-400" : "text-red-400"
-              }
-            >
-              {message().text}
-            </span>
-          )}
         </Show>
       </div>
+
+      <Show when={props.message}>
+        {(message) => (
+          <div
+            class={`pointer-events-none fixed bottom-4 left-1/2 z-[80] -translate-x-1/2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 py-2 text-center text-xs shadow-xl backdrop-blur-sm ${
+              message().type === "success" ? "text-green-400" : "text-red-400"
+            }`}
+          >
+            {message().text}
+          </div>
+        )}
+      </Show>
     </section>
   );
 }

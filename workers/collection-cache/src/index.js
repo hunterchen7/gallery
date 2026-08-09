@@ -114,9 +114,11 @@ export class CollectionCache extends DurableObject {
         p.id AS "photoId",
         p.url,
         p.thumbnail,
+        p.content_hash AS "contentHash",
         p.width,
         p.height,
         p.date,
+        p.created_at AS "photoCreatedAt",
         pc."order"
       FROM collections c
       LEFT JOIN photo_collections pc ON pc.collection_id = c.id
@@ -141,9 +143,11 @@ export class CollectionCache extends DurableObject {
           id: row.photoId,
           url: row.url,
           thumbnail: row.thumbnail,
+          contentHash: row.contentHash,
           width: row.width,
           height: row.height,
           date: row.date,
+          createdAt: row.photoCreatedAt,
           order: row.order,
         })),
     };

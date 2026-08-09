@@ -2,6 +2,7 @@ import { json } from "@solidjs/router";
 import type { APIEvent } from "@solidjs/start/server";
 import { getDb, schema } from "~/db";
 import { eq, and } from "drizzle-orm";
+import { readCollectionCache } from "~/lib/collection-cache";
 
 /**
  * GET /api/collections/[id] - Get a single collection with its photos
@@ -9,8 +10,25 @@ import { eq, and } from "drizzle-orm";
  */
 export async function GET(event: APIEvent) {
   const id = event.params.id;
-  const db = getDb();
   const isAdmin = event.request.headers.get("X-Auth-Key") === process.env.API_KEY;
+
+  const cached = await readCollectionCache(id);
+  if (cached.status === "available") {
+    if (!cached.collection || (cached.collection.isPrivate && !isAdmin)) {
+      return json(
+        { error: "Collection not found" },
+        {
+          status: 404,
+          headers: { "X-Collection-Cache": cached.cacheStatus },
+        },
+      );
+    }
+    return json(cached.collection, {
+      headers: { "X-Collection-Cache": cached.cacheStatus },
+    });
+  }
+
+  const db = getDb();
 
   const collection = await db.query.collections.findFirst({
     where: isAdmin
@@ -39,11 +57,14 @@ export async function GET(event: APIEvent) {
     order: pc.order,
   }));
 
-  return json({
-    ...collection,
-    photos,
-    photoCollections: undefined,
-  });
+  return json(
+    {
+      ...collection,
+      photos,
+      photoCollections: undefined,
+    },
+    { headers: { "X-Collection-Cache": "UNAVAILABLE" } },
+  );
 }
 
 /**

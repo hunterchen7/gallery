@@ -27,8 +27,8 @@ npm run dev
 ```
 
 This starts both the Vinxi app and a Wrangler remote-development bridge on
-`127.0.0.1:8787`. The bridge binds to the deployed collection Durable Object,
-so local development against the live database shares production cache
+`127.0.0.1:8787`. The bridge binds to the deployed D1 snapshot database and the
+temporary Durable Object fallback, so local development shares production cache
 invalidation. Use `npm run dev:app` only when intentionally running Vinxi
 without the cache bridge.
 
@@ -61,18 +61,29 @@ Start production server:
 npm start
 ```
 
-## Collection cache
+## Collection snapshots
 
-Collection pages use one private Cloudflare Durable Object per collection as a
-persistent JSON snapshot cache. Neon remains the source of truth. All app
-mutations mark the affected objects dirty before changing Neon, and the final
-overlapping mutation rebuilds the snapshot. The collection API exposes the
-result in its `X-Collection-Cache` response header (`HIT`, `MISS`, `BYPASS`, or
-`UNAVAILABLE`).
+Collection routes use D1 as a persistent JSON snapshot store. Neon remains the
+source of truth. D1 stores one complete page payload per collection plus a small
+public collection-navigation payload. A direct route request waits for both D1
+reads and embeds them in the initial HTML response, so the browser never renders
+a collection-metadata loading state.
+
+All app mutations mark affected D1 snapshots dirty before changing Neon. The
+final overlapping mutation rebuilds each snapshot, and a generation check keeps
+an older refresh from overwriting a newer invalidation. The former per-collection
+Durable Objects remain bound temporarily as a cache-miss and rollback fallback.
+See `docs/d1-collection-snapshot-migration.md` for the rollout contract.
+
+Apply D1 snapshot schema migrations with:
+
+```bash
+npx wrangler d1 migrations apply gallery-collection-snapshots --remote
+```
 
 Production is deployed as one Cloudflare Worker containing the SolidStart app,
-static assets, API routes, and the collection Durable Object. `npm run dev`
-accesses that Durable Object through Wrangler's remote binding without a Worker
+static assets, API routes, the D1 binding, and the temporary collection Durable
+Object fallback. `npm run dev` accesses the remote bindings without a Worker
 build. `npm run preview` builds and runs the complete Worker locally.
 
 Deploy the unified Worker manually with:

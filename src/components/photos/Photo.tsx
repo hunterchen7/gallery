@@ -57,7 +57,8 @@ export function Photo(props: PhotoProps) {
           class={`h-full w-full max-h-96 max-w-[600px] object-cover transition-opacity duration-300 ${
             loaded() ? "opacity-100" : "opacity-0"
           } cursor-nesw-resize transition-transform hover:scale-[1.02]`}
-          loading="lazy"
+          loading={props.index < 12 ? "eager" : "lazy"}
+          fetchpriority={props.index < 4 ? "high" : "auto"}
           draggable={false}
           onLoad={handleImageLoad}
         />

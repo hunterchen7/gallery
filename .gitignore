@@ -11,3 +11,8 @@ dist
 
 # Drizzle
 drizzle/
+
+# Cloudflare Workers local state and secrets
+.wrangler/
+.dev.vars*
+!.dev.vars.example

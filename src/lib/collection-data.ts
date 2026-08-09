@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { getDb, schema } from "~/db";
+import type { Collection } from "~/db/schema";
 import { readCollectionCache } from "~/lib/collection-cache";
 
 export interface CollectionPagePhoto {
@@ -27,6 +28,14 @@ export interface CollectionPageData {
 export interface CollectionPageResult {
   collection: CollectionPageData | null;
   cacheStatus: string;
+}
+
+export async function loadPublicCollections(): Promise<Collection[]> {
+  const db = getDb();
+  return db.query.collections.findMany({
+    where: eq(schema.collections.isPrivate, false),
+    orderBy: (collections, { asc }) => [asc(collections.name)],
+  });
 }
 
 function serializeDate(value: Date | string): string {

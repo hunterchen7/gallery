@@ -49,11 +49,6 @@ export function GalleryActions(props: GalleryActionsProps) {
         <span class="shrink-0">collections:</span>
         <Show
           when={props.collectionsLoaded && props.collections.length > 0}
-          fallback={
-            <Show when={!props.collectionsLoaded}>
-              <span class="text-zinc-500">loading...</span>
-            </Show>
-          }
         >
           <For each={props.collections}>
             {(collection) => (

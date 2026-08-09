@@ -28,8 +28,12 @@ import { getStoredAuthKey, isAuthenticated } from "~/lib/auth";
 import { GalleryActions } from "~/components/photos/GalleryActions";
 import { UploadButton } from "~/components/admin/UploadButton";
 import { type GalleryPhoto, S3_PREFIX } from "~/types/photo";
+import type { Collection } from "~/db/schema";
 import { useCollections } from "~/lib/galleryStore";
-import { getPublicCollectionPage } from "~/lib/collection-query";
+import {
+  getPublicCollectionPage,
+  getPublicCollectionsPage,
+} from "~/lib/collection-query";
 import { formatDate } from "~/utils/date";
 
 export { type GalleryPhoto } from "~/types/photo";
@@ -39,6 +43,7 @@ export interface GalleryProps {
   caption: JSX.Element;
   currentCollectionId?: string;
   currentCollection?: EditableCollection;
+  initialCollections?: Collection[];
   loading?: boolean;
 }
 
@@ -112,6 +117,10 @@ export function Gallery(props: GalleryProps) {
   const collectionPreloadTimers: number[] = [];
 
   const photos = () => editablePhotos();
+  const visibleCollections = () =>
+    collectionsLoaded() ? collections() : props.initialCollections || [];
+  const visibleCollectionsLoaded = () =>
+    collectionsLoaded() || props.initialCollections !== undefined;
   const canUndo = () => orderHistoryIndex() > 0;
   const canRedo = () => orderHistoryIndex() < orderHistory().length - 1;
   const detailsChanged = () =>
@@ -152,12 +161,14 @@ export function Gallery(props: GalleryProps) {
     void (async () => {
       const authenticated = isAuthenticated();
       setIsAdmin(authenticated);
-      await loadCollections();
+      if (authenticated || !props.initialCollections) {
+        await loadCollections();
+      }
 
       // Let the current gallery settle first, then warm the route code and
       // cached page payloads for the other public collections in small,
       // staggered requests.
-      collections()
+      visibleCollections()
         .filter(
           (collection) =>
             !collection.isPrivate && collection.id !== props.currentCollectionId,
@@ -191,6 +202,10 @@ export function Gallery(props: GalleryProps) {
 
   function invalidateCollectionPage(collectionId: string) {
     void revalidate(getPublicCollectionPage.keyFor(collectionId));
+  }
+
+  function invalidateCollectionList() {
+    void revalidate(getPublicCollectionsPage.key);
   }
 
   function updateUrlWithImage(index: number | null) {
@@ -496,7 +511,7 @@ export function Gallery(props: GalleryProps) {
 
       invalidateCollectionPage(collectionId);
 
-      const targetName = collections().find(
+      const targetName = visibleCollections().find(
         (collection) => collection.id === collectionId,
       )?.name;
       setMessage({
@@ -606,6 +621,7 @@ export function Gallery(props: GalleryProps) {
       setDraftName(result.name);
       setDraftDescription(result.description || "");
       invalidateCollectionPage(collectionId);
+      invalidateCollectionList();
       await loadCollections(true);
       return true;
     } catch (error) {
@@ -874,8 +890,8 @@ export function Gallery(props: GalleryProps) {
 
         <GalleryActions
           isAdmin={isAdmin()}
-          collections={collections()}
-          collectionsLoaded={collectionsLoaded()}
+          collections={visibleCollections()}
+          collectionsLoaded={visibleCollectionsLoaded()}
           currentCollectionId={props.currentCollectionId}
           photoCount={photos().length}
           selectedCount={selectedPhotoIds().size}

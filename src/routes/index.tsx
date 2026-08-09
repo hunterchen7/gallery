@@ -1,10 +1,17 @@
 import { Title } from "@solidjs/meta";
 import { createAsync, type RouteDefinition } from "@solidjs/router";
 import { Gallery, type GalleryPhoto } from "~/components/photos/GalleryV2";
-import { getPublicCollectionPage } from "~/lib/collection-query";
+import {
+  getPublicCollectionPage,
+  getPublicCollectionsPage,
+} from "~/lib/collection-query";
 
 export const route = {
-  preload: () => getPublicCollectionPage("highlights"),
+  preload: () =>
+    Promise.all([
+      getPublicCollectionPage("highlights"),
+      getPublicCollectionsPage(),
+    ]),
 } satisfies RouteDefinition;
 
 export default function Index() {
@@ -12,6 +19,9 @@ export default function Index() {
     () => getPublicCollectionPage("highlights"),
     { deferStream: true },
   );
+  const publicCollections = createAsync(() => getPublicCollectionsPage(), {
+    deferStream: true,
+  });
 
   const photos = (): GalleryPhoto[] =>
     collection()?.photos.map((photo) => ({
@@ -34,6 +44,7 @@ export default function Index() {
         }
         currentCollectionId="highlights"
         currentCollection={collection() || undefined}
+        initialCollections={publicCollections()}
       />
     </>
   );

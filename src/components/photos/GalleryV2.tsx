@@ -69,6 +69,85 @@ interface PhotoDragState {
 
 const SLOT_DEBOUNCE_MS = 140;
 const SLOT_ANIMATION_MS = 220;
+const THUMBNAIL_PRELOAD_CONCURRENCY = 6;
+
+type RoutePreloader = ReturnType<typeof usePreloadRoute>;
+
+const queuedCollectionPreloads = new Set<string>();
+const preloadedThumbnailUrls = new Set<string>();
+let collectionPreloadChain: Promise<void> = Promise.resolve();
+
+function preloadThumbnail(url: string): Promise<void> {
+  if (preloadedThumbnailUrls.has(url)) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.fetchPriority = "low";
+    image.onload = () => {
+      preloadedThumbnailUrls.add(url);
+      resolve();
+    };
+    image.onerror = () => resolve();
+    image.src = url;
+  });
+}
+
+async function preloadThumbnails(urls: string[]) {
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < urls.length) {
+      const url = urls[nextIndex++];
+      await preloadThumbnail(url);
+    }
+  }
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(THUMBNAIL_PRELOAD_CONCURRENCY, urls.length) },
+      worker,
+    ),
+  );
+}
+
+function queueCollectionPreloads(
+  collections: CollectionNavigationItem[],
+  currentCollectionId: string | undefined,
+  preloadRoute: RoutePreloader,
+) {
+  const targets = collections
+    .filter(
+      (collection) =>
+        !collection.isPrivate &&
+        collection.id !== currentCollectionId &&
+        !queuedCollectionPreloads.has(collection.id),
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const collection of targets) {
+    queuedCollectionPreloads.add(collection.id);
+    collectionPreloadChain = collectionPreloadChain.then(async () => {
+      try {
+        preloadRoute(`/${collection.id}`, { preloadData: false });
+        const routeData = await getPublicCollectionRoute(collection.id);
+        const thumbnailUrls = [
+          ...new Set(
+            (routeData.collection?.photos ?? []).map(
+              (photo) => `${S3_PREFIX}${photo.thumbnail}`,
+            ),
+          ),
+        ];
+        await preloadThumbnails(thumbnailUrls);
+      } catch (error) {
+        queuedCollectionPreloads.delete(collection.id);
+        console.warn(
+          `Failed to preload collection ${collection.id}`,
+          error,
+        );
+      }
+    });
+  }
+}
 
 function GalleryShell(props: { title: JSX.Element; children: JSX.Element }) {
   return (
@@ -113,7 +192,7 @@ export function Gallery(props: GalleryProps) {
   let pendingSlotTimer: number | undefined;
   let lastSlottedPhotoId: string | undefined;
   let slotLockedUntil = 0;
-  const collectionPreloadTimers: number[] = [];
+  let collectionPreloadTimer: number | undefined;
 
   const photos = () => editablePhotos();
   const visibleCollections = createMemo(() => {
@@ -174,23 +253,18 @@ export function Gallery(props: GalleryProps) {
         await loadCollections();
       }
 
-      // Let the current gallery settle first, then warm the route code and
-      // cached page payloads for the other public collections in small,
-      // staggered requests.
-      visibleCollections()
-        .filter(
-          (collection) =>
-            !collection.isPrivate && collection.id !== props.currentCollectionId,
-        )
-        .forEach((collection, index) => {
-          collectionPreloadTimers.push(
-            window.setTimeout(
-              () =>
-                preloadRoute(`/${collection.id}`, { preloadData: true }),
-              300 + index * 125,
-            ),
-          );
-        });
+      // Let the current gallery start loading, then warm every other public
+      // collection alphabetically. Each collection's route data and thumbnails
+      // finish before the next collection begins.
+      collectionPreloadTimer = window.setTimeout(
+        () =>
+          queueCollectionPreloads(
+            visibleCollections(),
+            props.currentCollectionId,
+            preloadRoute,
+          ),
+        300,
+      );
 
       const imageParam = searchParams.image;
       if (imageParam) {
@@ -205,7 +279,9 @@ export function Gallery(props: GalleryProps) {
   onCleanup(() => {
     if (typeof window === "undefined") return;
     window.removeEventListener("keydown", handleEditKeyDown);
-    collectionPreloadTimers.forEach((timer) => window.clearTimeout(timer));
+    if (collectionPreloadTimer !== undefined) {
+      window.clearTimeout(collectionPreloadTimer);
+    }
     stopPointerTracking();
   });
 

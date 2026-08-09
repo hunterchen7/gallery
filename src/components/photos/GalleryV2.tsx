@@ -1,6 +1,7 @@
 import {
   onCleanup,
   createEffect,
+  createMemo,
   createSignal,
   For,
   type JSX,
@@ -114,8 +115,18 @@ export function Gallery(props: GalleryProps) {
   const collectionPreloadTimers: number[] = [];
 
   const photos = () => editablePhotos();
-  const visibleCollections = () =>
-    collectionsLoaded() ? collections() : props.initialCollections || [];
+  const visibleCollections = createMemo(() => {
+    const source = collectionsLoaded()
+      ? collections()
+      : props.initialCollections || [];
+    return source
+      .filter((collection) => !collection.isPrivate)
+      .sort(
+        (a, b) =>
+          Number(b.id === "highlights") - Number(a.id === "highlights") ||
+          a.name.localeCompare(b.name),
+      );
+  });
   const visibleCollectionsLoaded = () =>
     collectionsLoaded() || props.initialCollections !== undefined;
   const canUndo = () => orderHistoryIndex() > 0;

@@ -2,6 +2,7 @@ import { json } from "@solidjs/router";
 import type { APIEvent } from "@solidjs/start/server";
 import { getDb, schema } from "~/db";
 import { eq } from "drizzle-orm";
+import { withCollectionCacheRefresh } from "~/lib/collection-cache";
 
 /**
  * GET /api/collections - Get all collections
@@ -59,15 +60,17 @@ export async function POST(event: APIEvent) {
     );
   }
 
-  const [collection] = await db
-    .insert(schema.collections)
-    .values({
-      id,
-      name,
-      description: description || null,
-      isPrivate: isPrivate === true,
-    })
-    .returning();
+  const [collection] = await withCollectionCacheRefresh([id], () =>
+    db
+      .insert(schema.collections)
+      .values({
+        id,
+        name,
+        description: description || null,
+        isPrivate: isPrivate === true,
+      })
+      .returning(),
+  );
 
   return json(collection, { status: 201 });
 }

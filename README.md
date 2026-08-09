@@ -55,6 +55,36 @@ Start production server:
 npm start
 ```
 
+## Collection cache
+
+Collection pages use one private Cloudflare Durable Object per collection as a
+persistent JSON snapshot cache. Neon remains the source of truth. All app
+mutations mark the affected objects dirty before changing Neon, and the final
+overlapping mutation rebuilds the snapshot. The collection API exposes the
+result in its `X-Collection-Cache` response header (`HIT`, `MISS`, `BYPASS`, or
+`UNAVAILABLE`).
+
+The regular `npm run dev` server does not emulate the Pages Durable Object
+binding and automatically falls back to Neon. To provision the production
+cache without changing the existing Pages configuration:
+
+```bash
+npm run cache:deploy
+npm run cache:secret
+```
+
+Enter the same `DATABASE_URL` used by the Pages project when prompted. Then add
+a Durable Object binding to both the production and preview environments of the
+`hunter-gallery` Pages project:
+
+- Variable name: `COLLECTION_CACHE`
+- Worker: `gallery-collection-cache`
+- Durable Object class: `CollectionCache`
+
+Redeploy the Pages project after adding the binding. Do not add a new root
+Wrangler configuration without first downloading and preserving the current
+Pages settings; Pages treats that file as the complete configuration source.
+
 ## Structure
 
 - `src/routes/index.tsx` - Main gallery page (index route)

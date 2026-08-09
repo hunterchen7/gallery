@@ -14,6 +14,9 @@
         "backfill:hashes": "npx tsx scripts/backfill-photo-hashes.ts",
         "backfill:dimensions": "npx tsx scripts/backfill-photo-dimensions.ts",
         "migrate:manifests": "npx tsx scripts/migrate-manifests.ts",
+        "cache:dev": "npx wrangler dev --config workers/collection-cache/wrangler.jsonc",
+        "cache:deploy": "npx wrangler deploy --config workers/collection-cache/wrangler.jsonc",
+        "cache:secret": "npx wrangler secret put DATABASE_URL --config workers/collection-cache/wrangler.jsonc",
         "deploy": "npx wrangler pages deploy dist"
     },
     "dependencies": {

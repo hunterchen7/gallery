@@ -3,6 +3,14 @@
   "name": "gallery-cache-dev-proxy",
   "main": "workers/dev-cache-proxy.js",
   "compatibility_date": "2026-08-08",
+  "d1_databases": [
+    {
+      "binding": "COLLECTION_SNAPSHOTS",
+      "database_name": "gallery-collection-snapshots",
+      "database_id": "3a4ff108-6331-4724-9b15-f681ed5f850d",
+      "migrations_dir": "d1/migrations"
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {

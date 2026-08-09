@@ -1,7 +1,7 @@
 import {
   collectionSnapshotKey,
-  loadCollectionFromNeon,
-  loadPublicCollectionsFromNeon,
+  loadCollectionFromD1,
+  loadPublicCollectionsFromD1,
   PUBLIC_COLLECTIONS_SNAPSHOT_KEY,
 } from "~/lib/collection-source";
 import {
@@ -41,8 +41,8 @@ export async function withCollectionCacheRefresh<T>(
       readyToRefresh.map(async ({ cacheKey, completion }) => {
         const payload =
           cacheKey === PUBLIC_COLLECTIONS_SNAPSHOT_KEY
-            ? await loadPublicCollectionsFromNeon()
-            : await loadCollectionFromNeon(
+            ? await loadPublicCollectionsFromD1()
+            : await loadCollectionFromD1(
                 cacheKey.slice("collection:".length),
               );
         await publishSnapshot(cacheKey, payload, completion.generation);

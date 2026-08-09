@@ -1,8 +1,9 @@
 # D1 collection snapshot migration
 
-Neon remains the source of truth for collections, photos, and collection-photo
-relationships. D1 replaces the per-collection Durable Object cache with a small
-set of serialized route snapshots.
+D1 is the source of truth for collections, photos, and collection-photo
+relationships. It also replaces the former per-collection Durable Object cache
+with serialized route snapshots stored beside the normalized tables in the same
+database.
 
 ## Response contract
 
@@ -25,26 +26,28 @@ The payloads contain metadata only. Original images and thumbnails remain in R2.
 
 ## Invalidation contract
 
-Before a Neon mutation begins, every affected snapshot is marked dirty and given
-a mutation token. Dirty snapshots are never served. When all overlapping tokens
-for a key have completed, the Worker rebuilds that snapshot from Neon and only
-publishes it if no newer invalidation occurred during the rebuild.
+Before a relational mutation begins, every affected snapshot is marked dirty and
+given a mutation token. Dirty snapshots are never served. When all overlapping
+tokens for a key have completed, the Worker rebuilds that snapshot from the D1
+relational tables and only publishes it if no newer invalidation occurred during
+the rebuild.
 
 Collection create, rename, privacy, and delete operations also invalidate
 `public-collections`. Photo uploads, membership changes, and reorders invalidate
 only the affected collection snapshots.
 
-If D1 cannot be reached, reads fall back to Neon. Once D1 is configured for a
-mutation, invalidation failure stops that mutation so a clean stale snapshot can
-never outlive a successful Neon write.
+If a snapshot is absent or dirty, the route reads the normalized D1 tables and
+repairs it before responding. An invalidation failure stops the mutation so a
+clean stale snapshot can never outlive a successful relational write.
 
 ## Completed rollout
 
 1. Created the D1 database and applied its schema migration.
-2. Backfilled all current collection and navigation snapshots from Neon.
-3. Made D1 the primary read path, with Neon repairing missing or dirty entries.
-4. Removed the former Durable Object class, binding, read fallback, and cached
+2. Backfilled all normalized collection, photo, and membership records into D1.
+3. Verified every row and foreign key, then made D1 authoritative.
+4. Kept route snapshots as a derived, strongly invalidated read optimization.
+5. Removed the former Durable Object class, binding, read fallback, and cached
    instances with the Cloudflare `v2` delete-class migration.
 
-Neon remains authoritative, so a rollback can bypass D1 without moving or
-transforming collection data.
+The pre-cutover Neon dump is retained outside the repository as a rollback
+artifact; the running application no longer queries Neon.

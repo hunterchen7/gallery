@@ -2,8 +2,8 @@ import {
   collectionSnapshotKey,
   type CollectionNavigationItem,
   type CollectionPageData,
-  loadCollectionFromNeon,
-  loadPublicCollectionsFromNeon,
+  loadCollectionFromD1,
+  loadPublicCollectionsFromD1,
   PUBLIC_COLLECTIONS_SNAPSHOT_KEY,
 } from "~/lib/collection-source";
 import { publishSnapshot, readSnapshot } from "~/lib/d1-snapshot-store";
@@ -32,7 +32,7 @@ export async function loadPublicCollections(): Promise<
   );
   if (cached.status === "hit") return cached.payload;
 
-  const collections = await loadPublicCollectionsFromNeon();
+  const collections = await loadPublicCollectionsFromD1();
   if (cached.status === "miss" || cached.status === "dirty") {
     await publishSnapshot(
       PUBLIC_COLLECTIONS_SNAPSHOT_KEY,
@@ -44,8 +44,8 @@ export async function loadPublicCollections(): Promise<
 }
 
 /**
- * Loads the complete payload needed by a collection route. D1 is the primary
- * snapshot store and Neon remains authoritative for cache repair.
+ * Loads the complete payload needed by a collection route. Both the persistent
+ * route snapshot and the authoritative relational records live in D1.
  */
 export async function loadCollectionPage(
   id: string,
@@ -62,11 +62,11 @@ export async function loadCollectionPage(
     return { collection, cacheStatus: "D1-HIT" };
   }
 
-  const collection = await loadCollectionFromNeon(id);
+  const collection = await loadCollectionFromD1(id);
   const cacheStatus =
     snapshot.status === "unavailable"
-      ? "D1-UNAVAILABLE/NEON"
-      : `D1-${snapshot.status.toUpperCase()}/NEON`;
+      ? "D1-SNAPSHOT-UNAVAILABLE/RELATIONAL"
+      : `D1-${snapshot.status.toUpperCase()}/RELATIONAL`;
 
   if (snapshot.status === "miss" || snapshot.status === "dirty") {
     await publishSnapshot(

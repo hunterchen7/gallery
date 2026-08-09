@@ -73,7 +73,7 @@ export function serializeCollection(collection: {
   };
 }
 
-export async function loadCollectionFromNeon(
+export async function loadCollectionFromD1(
   id: string,
 ): Promise<CollectionPageData | null> {
   const db = getDb();
@@ -97,7 +97,7 @@ export async function loadCollectionFromNeon(
   });
 }
 
-export async function loadPublicCollectionsFromNeon(): Promise<
+export async function loadPublicCollectionsFromD1(): Promise<
   CollectionNavigationItem[]
 > {
   const db = getDb();

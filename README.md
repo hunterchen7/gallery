@@ -34,7 +34,7 @@ only when intentionally running Vinxi without the cache bridge.
 Apply schema changes after pulling a version that updates `src/db/schema.ts`:
 
 ```bash
-npm run db:push
+npm run db:migrate
 ```
 
 Backfill hashes for photos uploaded before content-based deduplication. Run the
@@ -62,21 +62,22 @@ npm start
 
 ## Collection snapshots
 
-Collection routes use D1 as a persistent JSON snapshot store. Neon remains the
-source of truth. D1 stores one complete page payload per collection plus a small
-public collection-navigation payload. A direct route request waits for both D1
-reads and embeds them in the initial HTML response, so the browser never renders
-a collection-metadata loading state.
+Cloudflare D1 is the source of truth for collections, photos, and collection
+membership. The same database also stores one complete JSON page snapshot per
+collection plus a small public collection-navigation snapshot. A direct route
+request waits for those reads and embeds them in the initial HTML response, so
+the browser never renders a collection-metadata loading state.
 
-All app mutations mark affected D1 snapshots dirty before changing Neon. The
-final overlapping mutation rebuilds each snapshot, and a generation check keeps
-an older refresh from overwriting a newer invalidation. See
+All app mutations mark affected snapshots dirty before changing the relational
+D1 tables. The final overlapping mutation rebuilds each snapshot from those
+tables, and a generation check keeps an older refresh from overwriting a newer
+invalidation. See
 `docs/d1-collection-snapshot-migration.md` for the migration contract.
 
 Apply D1 snapshot schema migrations with:
 
 ```bash
-npx wrangler d1 migrations apply gallery-collection-snapshots --remote
+npm run db:migrate
 ```
 
 Production is deployed as one Cloudflare Worker containing the SolidStart app,
@@ -90,8 +91,8 @@ Deploy the unified Worker manually with:
 npm run deploy
 ```
 
-The Worker requires the same runtime secrets as the former Pages project:
-`DATABASE_URL`, `API_KEY`, `ENCRYPTED_API_KEY`, `R2_ACCOUNT_ID`,
+The Worker requires these runtime secrets:
+`API_KEY`, `ENCRYPTED_API_KEY`, `R2_ACCOUNT_ID`,
 `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_BUCKET_NAME`.
 
 For automatic deployments, connect `hunterchen7/gallery` to

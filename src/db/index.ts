@@ -1,16 +1,9 @@
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import { drizzle } from "drizzle-orm/d1";
+import { getD1Database } from "./d1-client";
 import * as schema from "./schema";
 
-// Create a database connection using Neon's serverless driver
-// This works well with edge runtimes like Cloudflare Workers
 function createDb() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL environment variable is not set");
-  }
-  const sql = neon(databaseUrl);
-  return drizzle(sql, { schema });
+  return drizzle(getD1Database() as D1Database, { schema });
 }
 
 // Lazy initialization to avoid errors during build

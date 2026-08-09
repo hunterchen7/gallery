@@ -11,6 +11,7 @@
         "db:migrate": "drizzle-kit migrate",
         "db:push": "drizzle-kit push",
         "db:studio": "drizzle-kit studio",
+        "db:migrate:neon-to-d1": "npx tsx scripts/migrate-neon-to-d1.ts",
         "auth:generate": "npx tsx scripts/generate-auth-key.ts",
         "backfill:hashes": "npx tsx scripts/backfill-photo-hashes.ts",
         "backfill:dimensions": "npx tsx scripts/backfill-photo-dimensions.ts",

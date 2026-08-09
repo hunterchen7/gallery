@@ -1,35 +1,43 @@
 import {
-  pgTable,
+  sqliteTable,
   text,
-  timestamp,
-  uuid,
   primaryKey,
   integer,
-  boolean,
   uniqueIndex,
-} from "drizzle-orm/pg-core";
+  index,
+} from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 
-export const collections = pgTable("collections", {
+export const collections = sqliteTable("collections", {
   id: text("id").primaryKey(), // URL slug, e.g., "airshow"
   name: text("name").notNull(), // Display name, e.g., "Airshow ✈️"
   description: text("description"), // Optional description
-  isPrivate: boolean("is_private").default(false).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  isPrivate: integer("is_private", { mode: "boolean" })
+    .default(false)
+    .notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .$defaultFn(() => new Date())
+    .notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .$defaultFn(() => new Date())
+    .notNull(),
 });
 
-export const photos = pgTable(
+export const photos = sqliteTable(
   "photos",
   {
-    id: uuid("id").defaultRandom().primaryKey(),
+    id: text("id")
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
     url: text("url").notNull(), // R2 filename
     thumbnail: text("thumbnail").notNull(), // R2 thumbnail filename
     contentHash: text("content_hash"), // SHA-256; null for legacy photos
     width: integer("width"), // Source image width; nullable for legacy rows
     height: integer("height"), // Source image height; nullable for legacy rows
-    date: timestamp("date").notNull(), // Photo date from EXIF
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    date: integer("date", { mode: "timestamp_ms" }).notNull(), // Photo date from EXIF
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .$defaultFn(() => new Date())
+      .notNull(),
   },
   (table) => ({
     contentHashIdx: uniqueIndex("photos_content_hash_idx").on(
@@ -38,10 +46,10 @@ export const photos = pgTable(
   }),
 );
 
-export const photoCollections = pgTable(
+export const photoCollections = sqliteTable(
   "photo_collections",
   {
-    photoId: uuid("photo_id")
+    photoId: text("photo_id")
       .notNull()
       .references(() => photos.id, { onDelete: "cascade" }),
     collectionId: text("collection_id")
@@ -51,6 +59,9 @@ export const photoCollections = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.photoId, table.collectionId] }),
+    collectionOrderIdx: index(
+      "photo_collections_collection_order_idx",
+    ).on(table.collectionId, table.order),
   }),
 );
 

@@ -3,9 +3,7 @@ import { A } from "@solidjs/router";
 import {
   CopyPlus,
   Download,
-  Redo2,
   Trash2,
-  Undo2,
 } from "lucide-solid";
 import type { Collection } from "~/db/schema";
 
@@ -16,16 +14,12 @@ interface GalleryActionsProps {
   currentCollectionId?: string;
   photoCount: number;
   selectedCount: number;
-  canUndo: boolean;
-  canRedo: boolean;
   busy: boolean;
   message?: { type: "success" | "error"; text: string };
   onSelectAll: () => void;
   onDownloadSelected: () => void;
   onAddToCollection: (collectionId: string) => void;
   onRemoveFromCollection: () => void;
-  onUndo: () => void;
-  onRedo: () => void;
 }
 
 export function GalleryActions(props: GalleryActionsProps) {
@@ -75,28 +69,6 @@ export function GalleryActions(props: GalleryActionsProps) {
               </A>
             )}
           </For>
-        </Show>
-
-        <Show when={props.isAdmin}>
-          <span class="mx-1 h-4 w-px shrink-0 bg-zinc-700" />
-          <button
-            onClick={props.onUndo}
-            disabled={props.busy || !props.canUndo}
-            class="shrink-0 rounded-md p-1.5 text-violet-300 hover:bg-zinc-800 disabled:text-zinc-700 disabled:hover:bg-transparent"
-            title="Undo (⌘/Ctrl+Z)"
-            aria-label="Undo"
-          >
-            <Undo2 class="h-4 w-4" />
-          </button>
-          <button
-            onClick={props.onRedo}
-            disabled={props.busy || !props.canRedo}
-            class="shrink-0 rounded-md p-1.5 text-violet-300 hover:bg-zinc-800 disabled:text-zinc-700 disabled:hover:bg-transparent"
-            title="Redo (⌘/Ctrl+Shift+Z)"
-            aria-label="Redo"
-          >
-            <Redo2 class="h-4 w-4" />
-          </button>
         </Show>
       </div>
 
@@ -159,25 +131,6 @@ export function GalleryActions(props: GalleryActionsProps) {
           >
             <Trash2 class="h-4 w-4" />
             Remove
-          </button>
-          <span class="mx-1 h-4 w-px shrink-0 bg-zinc-700" />
-          <button
-            onClick={props.onUndo}
-            disabled={props.busy || !props.canUndo}
-            class="shrink-0 rounded-md p-1.5 text-violet-300 hover:bg-zinc-800 disabled:text-zinc-700 disabled:hover:bg-transparent"
-            title="Undo (⌘/Ctrl+Z)"
-            aria-label="Undo"
-          >
-            <Undo2 class="h-4 w-4" />
-          </button>
-          <button
-            onClick={props.onRedo}
-            disabled={props.busy || !props.canRedo}
-            class="shrink-0 rounded-md p-1.5 text-violet-300 hover:bg-zinc-800 disabled:text-zinc-700 disabled:hover:bg-transparent"
-            title="Redo (⌘/Ctrl+Shift+Z)"
-            aria-label="Redo"
-          >
-            <Redo2 class="h-4 w-4" />
           </button>
         </Show>
       </div>

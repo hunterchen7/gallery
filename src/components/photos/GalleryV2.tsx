@@ -12,7 +12,9 @@ import {
   Check,
   GripVertical,
   Loader2,
+  Redo2,
   Settings,
+  Undo2,
   X,
 } from "lucide-solid";
 import { Photo as PhotoComponent } from "~/components/photos/Photo";
@@ -61,7 +63,7 @@ const SLOT_ANIMATION_MS = 220;
 function GalleryShell(props: { title: JSX.Element; children: JSX.Element }) {
   return (
     <main class="mx-auto pb-12 text-center font-mono text-violet-200">
-      <h1 class="mx-auto mb-1 mt-2 flex h-12 max-w-[14rem] items-center justify-center text-2xl font-thin leading-tight sm:text-4xl md:mt-6 md:max-w-none">
+      <h1 class="mx-auto mb-4 mt-2 flex h-12 max-w-[14rem] items-center justify-center text-2xl font-thin leading-tight sm:text-4xl md:mt-12 md:max-w-none">
         {props.title}
       </h1>
       {props.children}
@@ -271,7 +273,11 @@ export function Gallery(props: GalleryProps) {
     stopPointerTracking();
     lastSlottedPhotoId = undefined;
     slotLockedUntil = 0;
-    const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const card = (event.currentTarget as HTMLElement).closest<HTMLElement>(
+      "[data-reorder-photo-id]",
+    );
+    if (!card) return;
+    const bounds = card.getBoundingClientRect();
     setDragState({
       photo,
       pointerId: event.pointerId,
@@ -696,11 +702,34 @@ export function Gallery(props: GalleryProps) {
                 event.preventDefault();
               }
             }}
-            class="flex items-center gap-2 rounded-full bg-zinc-900/90 px-3 py-2 text-sm font-medium text-violet-200 shadow-lg backdrop-blur-sm transition-colors hover:bg-zinc-800 sm:px-4"
+            class="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900/90 text-violet-200 shadow-lg backdrop-blur-sm transition-colors hover:bg-zinc-800"
+            title="Manage galleries"
+            aria-label="Manage galleries"
           >
-            <Settings class="h-4 w-4" />
-            <span class="hidden sm:inline">Settings</span>
+            <Settings class="h-5 w-5" />
           </A>
+
+          <button
+            type="button"
+            onClick={undoLocalAction}
+            disabled={busy() || savingDetails() || !canUndo()}
+            class="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900/90 text-violet-200 shadow-lg backdrop-blur-sm transition-colors hover:bg-zinc-800 disabled:text-zinc-600 disabled:opacity-45 disabled:hover:bg-zinc-900/90"
+            title="Undo (⌘/Ctrl+Z)"
+            aria-label="Undo"
+          >
+            <Undo2 class="h-5 w-5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={redoLocalAction}
+            disabled={busy() || savingDetails() || !canRedo()}
+            class="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900/90 text-violet-200 shadow-lg backdrop-blur-sm transition-colors hover:bg-zinc-800 disabled:text-zinc-600 disabled:opacity-45 disabled:hover:bg-zinc-900/90"
+            title="Redo (⌘/Ctrl+Shift+Z)"
+            aria-label="Redo"
+          >
+            <Redo2 class="h-5 w-5" />
+          </button>
 
           <button
             onClick={() =>
@@ -779,7 +808,7 @@ export function Gallery(props: GalleryProps) {
         )}
       </Show>
 
-      <div class="mx-4 mb-2 text-xs text-violet-200 md:text-sm">
+      <div class="mx-4 mb-4 text-xs text-violet-200 md:text-sm">
         <div class="relative mx-auto h-8 max-w-2xl px-3">
           <Show
             when={isAdmin() && props.currentCollectionId}
@@ -814,19 +843,15 @@ export function Gallery(props: GalleryProps) {
           currentCollectionId={props.currentCollectionId}
           photoCount={photos().length}
           selectedCount={selectedPhotoIds().size}
-          canUndo={canUndo()}
-          canRedo={canRedo()}
           busy={busy() || savingDetails()}
           message={detailsStatus() || message()}
           onSelectAll={handleSelectAll}
           onDownloadSelected={downloadSelectedPhotos}
           onAddToCollection={addSelectedToCollection}
           onRemoveFromCollection={removeSelectedFromCollection}
-          onUndo={undoLocalAction}
-          onRedo={redoLocalAction}
         />
 
-        <div class="w-fill p-1 sm:p-2">
+        <div class="w-fill p-1 sm:p-2 md:p-4">
           <Show
             when={!props.loading}
             fallback={

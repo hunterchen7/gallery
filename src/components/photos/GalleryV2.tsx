@@ -20,6 +20,7 @@ import {
   Loader2,
   Redo2,
   Settings,
+  Shuffle,
   Undo2,
   X,
 } from "lucide-solid";
@@ -485,6 +486,30 @@ export function Gallery(props: GalleryProps) {
     setMessage(undefined);
   }
 
+  function shufflePhotos() {
+    const current = photos();
+    if (current.length < 2) return;
+
+    const shuffled = [...current];
+    for (let index = shuffled.length - 1; index > 0; index--) {
+      const other = Math.floor(Math.random() * (index + 1));
+      [shuffled[index], shuffled[other]] = [shuffled[other], shuffled[index]];
+    }
+
+    if (
+      ordersMatch(
+        shuffled.map((photo) => photo.id),
+        current.map((photo) => photo.id),
+      )
+    ) {
+      [shuffled[0], shuffled[1]] = [shuffled[1], shuffled[0]];
+    }
+
+    setEditablePhotos(shuffled);
+    recordOrder(shuffled.map((photo) => photo.id));
+    setMessage(undefined);
+  }
+
   function handleEditKeyDown(event: KeyboardEvent) {
     if (!isAdmin() || busy() || !(event.metaKey || event.ctrlKey)) return;
     const target = event.target as HTMLElement | null;
@@ -770,6 +795,17 @@ export function Gallery(props: GalleryProps) {
           >
             <Settings class="h-5 w-5" />
           </A>
+
+          <button
+            type="button"
+            onClick={shufflePhotos}
+            disabled={busy() || savingDetails() || photos().length < 2}
+            class="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900/90 text-violet-200 shadow-lg backdrop-blur-sm transition-colors hover:bg-zinc-800 disabled:text-zinc-600 disabled:opacity-45 disabled:hover:bg-zinc-900/90"
+            title="Shuffle photos"
+            aria-label="Shuffle photos"
+          >
+            <Shuffle class="h-5 w-5" />
+          </button>
 
           <button
             type="button"

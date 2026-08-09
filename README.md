@@ -26,6 +26,12 @@ Run the development server:
 npm run dev
 ```
 
+This starts both the Vinxi app and a Wrangler remote-development bridge on
+`127.0.0.1:8787`. The bridge binds to the deployed collection Durable Object,
+so local development against the live database shares production cache
+invalidation. Use `npm run dev:app` only when intentionally running Vinxi
+without the cache bridge.
+
 Apply schema changes after pulling a version that updates `src/db/schema.ts`:
 
 ```bash
@@ -65,9 +71,9 @@ result in its `X-Collection-Cache` response header (`HIT`, `MISS`, `BYPASS`, or
 `UNAVAILABLE`).
 
 Production is deployed as one Cloudflare Worker containing the SolidStart app,
-static assets, API routes, and the collection Durable Object. The regular
-`npm run dev` server still uses Neon directly; `npm run preview` builds and runs
-the complete Worker locally.
+static assets, API routes, and the collection Durable Object. `npm run dev`
+accesses that Durable Object through Wrangler's remote binding without a Worker
+build. `npm run preview` builds and runs the complete Worker locally.
 
 Deploy the unified Worker manually with:
 

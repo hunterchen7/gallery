@@ -17,6 +17,8 @@ interface CloudflareEnv {
   COLLECTION_CACHE?: DurableObjectNamespaceLike;
 }
 
+const LOCAL_CACHE_ORIGIN = "http://127.0.0.1:8787";
+
 type CacheReadResult =
   | {
       status: "available";
@@ -35,8 +37,21 @@ function getNamespace(): DurableObjectNamespaceLike | undefined {
 
 function getStub(collectionId: string): DurableObjectStubLike | null {
   const namespace = getNamespace();
-  if (!namespace) return null;
-  return namespace.get(namespace.idFromName(collectionId));
+  if (namespace) return namespace.get(namespace.idFromName(collectionId));
+
+  if (import.meta.env.DEV) {
+    return {
+      fetch(input, init) {
+        const internalUrl = new URL(input.toString());
+        return fetch(
+          `${LOCAL_CACHE_ORIGIN}${internalUrl.pathname}${internalUrl.search}`,
+          init,
+        );
+      },
+    };
+  }
+
+  return null;
 }
 
 function collectionUrl(collectionId: string) {

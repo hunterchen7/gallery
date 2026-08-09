@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "gallery-cache-dev-proxy",
+  "main": "workers/dev-cache-proxy.js",
+  "compatibility_date": "2026-08-08",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "COLLECTION_CACHE",
+        "class_name": "CollectionCache",
+        "script_name": "hunter-gallery-worker"
+      }
+    ]
+  }
+}

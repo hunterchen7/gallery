@@ -6,11 +6,20 @@ import {
   onMount,
   Show,
 } from "solid-js";
-import { Check, ImagePlus, Loader2, RotateCcw, Upload, X } from "lucide-solid";
+import {
+  Check,
+  ImagePlus,
+  Loader2,
+  Plus,
+  RotateCcw,
+  Upload,
+  X,
+} from "lucide-solid";
 import { getStoredAuthKey } from "~/lib/auth";
 import { processImage, type ProcessedImage } from "~/lib/image-processing";
 import { uploadToPresignedUrl } from "~/lib/r2";
 import type { Collection } from "~/db/schema";
+import { CollectionModal } from "./CollectionModal";
 
 interface UploadModalProps {
   collections: Collection[];
@@ -45,6 +54,9 @@ export function UploadModal(props: UploadModalProps) {
   const [files, setFiles] = createSignal<UploadState[]>([]);
   const [selectedCollections, setSelectedCollections] =
     createSignal<string[]>(defaultCollections);
+  const [availableCollections, setAvailableCollections] =
+    createSignal<Collection[]>(props.collections);
+  const [showCollectionModal, setShowCollectionModal] = createSignal(false);
   const [isDraggingOver, setIsDraggingOver] = createSignal(false);
   const [hasUploaded, setHasUploaded] = createSignal(false);
 
@@ -263,6 +275,40 @@ export function UploadModal(props: UploadModalProps) {
     }
   }
 
+  async function handleCollectionCreated() {
+    setShowCollectionModal(false);
+    const previousIds = new Set(
+      availableCollections().map((collection) => collection.id),
+    );
+
+    try {
+      const response = await fetch("/api/collections", {
+        headers: { "X-Auth-Key": getStoredAuthKey() || "" },
+      });
+      if (!response.ok) return;
+
+      const nextCollections = (await response.json()) as Collection[];
+      setAvailableCollections(nextCollections);
+
+      const createdCollection = nextCollections.find(
+        (collection) => !previousIds.has(collection.id),
+      );
+      if (!createdCollection || collectionSelectionLocked()) return;
+
+      const collectionIds = Array.from(
+        new Set([...selectedCollections(), createdCollection.id]),
+      );
+      setSelectedCollections(collectionIds);
+      files()
+        .filter((file) => file.status === "ready" && file.processed)
+        .forEach((file) =>
+          void uploadFile(file.id, file.processed!, collectionIds),
+        );
+    } catch (error) {
+      console.error("Failed to refresh collections:", error);
+    }
+  }
+
   function removeFile(id: string) {
     const file = files().find((candidate) => candidate.id === id);
     if (!file || file.status === "uploading") return;
@@ -307,14 +353,26 @@ export function UploadModal(props: UploadModalProps) {
 
         <div class="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[18rem_1fr]">
           <aside class="border-b border-zinc-800 p-4 lg:border-b-0 lg:border-r">
-            <h3 class="mb-2 text-sm font-medium text-violet-400">
-              Add to collections
-            </h3>
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <h3 class="text-sm font-medium text-violet-400">
+                Add to collections
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowCollectionModal(true)}
+                disabled={collectionSelectionLocked()}
+                class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-violet-300 transition-colors hover:bg-zinc-800 hover:text-violet-200 disabled:cursor-not-allowed disabled:opacity-40"
+                title="Create collection"
+              >
+                <Plus class="h-3.5 w-3.5" />
+                New
+              </button>
+            </div>
             <p class="mb-3 text-xs text-zinc-500">
               Choose before selecting photos. The selection locks once uploading starts.
             </p>
             <div class="flex max-h-28 flex-wrap gap-2 overflow-y-auto lg:max-h-[calc(100vh-14rem)] lg:flex-col lg:flex-nowrap">
-              <For each={props.collections}>
+              <For each={availableCollections()}>
                 {(collection) => (
                   <button
                     onClick={() => toggleCollection(collection.id)}
@@ -468,6 +526,13 @@ export function UploadModal(props: UploadModalProps) {
           </button>
         </footer>
       </div>
+
+      <Show when={showCollectionModal()}>
+        <CollectionModal
+          onClose={() => setShowCollectionModal(false)}
+          onSave={() => void handleCollectionCreated()}
+        />
+      </Show>
     </div>
   );
 }

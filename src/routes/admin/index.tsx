@@ -155,7 +155,7 @@ export default function AdminPage() {
                             class="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-violet-200"
                           >
                             <Eye class="h-4 w-4" />
-                            Open gallery
+                            Open
                           </A>
                           <button
                             onClick={() => setCollectionModal(collection)}

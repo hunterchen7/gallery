@@ -2,6 +2,7 @@ import { json } from "@solidjs/router";
 import type { APIEvent } from "@solidjs/start/server";
 import { eq, max } from "drizzle-orm";
 import { getDb, schema } from "~/db";
+import { withCollectionCacheRefresh } from "~/lib/collection-cache";
 
 /**
  * POST /api/collections/[id]/photos - Add existing photos to a collection
@@ -38,17 +39,19 @@ export async function POST(event: APIEvent) {
     .where(eq(schema.photoCollections.collectionId, collectionId));
   const firstOrder = (orderResult?.maxOrder ?? -1) + 1;
 
-  const added = await db
-    .insert(schema.photoCollections)
-    .values(
-      photoIds.map((photoId, index) => ({
-        photoId,
-        collectionId,
-        order: firstOrder + index,
-      })),
-    )
-    .onConflictDoNothing()
-    .returning({ photoId: schema.photoCollections.photoId });
+  const added = await withCollectionCacheRefresh([collectionId], () =>
+    db
+      .insert(schema.photoCollections)
+      .values(
+        photoIds.map((photoId, index) => ({
+          photoId,
+          collectionId,
+          order: firstOrder + index,
+        })),
+      )
+      .onConflictDoNothing()
+      .returning({ photoId: schema.photoCollections.photoId }),
+  );
 
   return json({
     success: true,

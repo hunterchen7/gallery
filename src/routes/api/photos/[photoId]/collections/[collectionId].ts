@@ -2,6 +2,7 @@ import { json } from "@solidjs/router";
 import type { APIEvent } from "@solidjs/start/server";
 import { getDb, schema } from "~/db";
 import { eq, and } from "drizzle-orm";
+import { withCollectionCacheRefresh } from "~/lib/collection-cache";
 
 /**
  * DELETE /api/photos/[photoId]/collections/[collectionId] - Remove a photo from a collection
@@ -27,14 +28,16 @@ export async function DELETE(event: APIEvent) {
 
   const db = getDb();
 
-  const result = await db
-    .delete(schema.photoCollections)
-    .where(
-      and(
-        eq(schema.photoCollections.photoId, photoId),
-        eq(schema.photoCollections.collectionId, collectionId),
+  await withCollectionCacheRefresh([collectionId], () =>
+    db
+      .delete(schema.photoCollections)
+      .where(
+        and(
+          eq(schema.photoCollections.photoId, photoId),
+          eq(schema.photoCollections.collectionId, collectionId),
+        ),
       ),
-    );
+  );
 
   return json({ success: true });
 }

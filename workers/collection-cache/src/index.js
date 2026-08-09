@@ -2,6 +2,7 @@ import { neon } from "@neondatabase/serverless";
 import { DurableObject } from "cloudflare:workers";
 
 const STATE_KEY = "collection-cache-state";
+const ABANDONED_MUTATION_MS = 5 * 60 * 1000;
 
 function jsonResponse(body, status = 200, cacheStatus = "MISS") {
   return new Response(JSON.stringify(body), {
@@ -18,10 +19,11 @@ export class CollectionCache extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.sql = neon(env.DATABASE_URL);
-    this.state = { generation: 0, dirty: false };
+    this.state = { generation: 0, activeMutations: {} };
     this.ready = ctx.blockConcurrencyWhile(async () => {
       this.state =
         (await ctx.storage.get(STATE_KEY)) ?? this.state;
+      this.state.activeMutations ??= {};
     });
   }
 
@@ -46,14 +48,19 @@ export class CollectionCache extends DurableObject {
     }
 
     if (request.method === "PUT") {
-      return this.refresh(collectionId);
+      return this.refresh(
+        collectionId,
+        request.headers.get("X-Cache-Mutation-Token"),
+      );
     }
 
     return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
   async getCollection(collectionId) {
-    if (!this.state.dirty && this.state.snapshot !== undefined) {
+    await this.pruneAbandonedMutations();
+
+    if (!this.isDirty() && this.state.snapshot !== undefined) {
       return this.snapshotResponse(this.state.snapshot, "HIT");
     }
 
@@ -62,8 +69,8 @@ export class CollectionCache extends DurableObject {
 
     // An edit invalidated this object while Neon was being read. The response is
     // still a valid concurrent read, but it must not become the persistent cache.
-    if (!this.state.dirty && this.state.generation === generation) {
-      this.state = { generation, dirty: false, snapshot };
+    if (!this.isDirty() && this.state.generation === generation) {
+      this.state = { generation, activeMutations: {}, snapshot };
       await this.ctx.storage.put(STATE_KEY, this.state);
       return this.snapshotResponse(snapshot, "MISS");
     }
@@ -72,27 +79,67 @@ export class CollectionCache extends DurableObject {
   }
 
   async invalidate() {
+    const token = crypto.randomUUID();
     this.state = {
       generation: this.state.generation + 1,
-      dirty: true,
+      activeMutations: {
+        ...this.state.activeMutations,
+        [token]: Date.now(),
+      },
     };
     await this.ctx.storage.put(STATE_KEY, this.state);
-    return jsonResponse({ success: true }, 200, "INVALIDATED");
+    return jsonResponse({ success: true, token }, 200, "INVALIDATED");
   }
 
-  async refresh(collectionId) {
+  async refresh(collectionId, token) {
+    if (!token || !(token in this.state.activeMutations)) {
+      return jsonResponse({ error: "Invalid mutation token" }, 409);
+    }
+
+    const activeMutations = { ...this.state.activeMutations };
+    delete activeMutations[token];
+    this.state = { ...this.state, activeMutations };
+    await this.ctx.storage.put(STATE_KEY, this.state);
+
+    if (this.isDirty()) {
+      return jsonResponse({ success: true, refreshed: false }, 202, "DIRTY");
+    }
+
     const generation = this.state.generation;
     const snapshot = await this.loadCollection(collectionId);
 
     // A newer mutation owns the next refresh. Do not publish an older read over
     // its invalidation marker.
-    if (this.state.generation !== generation) {
+    if (this.state.generation !== generation || this.isDirty()) {
       return jsonResponse({ success: true, refreshed: false }, 202, "BYPASS");
     }
 
-    this.state = { generation, dirty: false, snapshot };
+    this.state = { generation, activeMutations: {}, snapshot };
     await this.ctx.storage.put(STATE_KEY, this.state);
     return jsonResponse({ success: true, refreshed: true }, 200, "REFRESHED");
+  }
+
+  isDirty() {
+    return Object.keys(this.state.activeMutations).length > 0;
+  }
+
+  async pruneAbandonedMutations() {
+    const cutoff = Date.now() - ABANDONED_MUTATION_MS;
+    const activeMutations = Object.fromEntries(
+      Object.entries(this.state.activeMutations).filter(
+        ([, startedAt]) => startedAt >= cutoff,
+      ),
+    );
+
+    if (
+      Object.keys(activeMutations).length ===
+      Object.keys(this.state.activeMutations).length
+    ) {
+      return;
+    }
+
+    this.state = { ...this.state, activeMutations };
+    await this.ctx.storage.put(STATE_KEY, this.state);
   }
 
   snapshotResponse(snapshot, cacheStatus) {

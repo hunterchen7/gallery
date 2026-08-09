@@ -2,6 +2,7 @@ import { json } from "@solidjs/router";
 import type { APIEvent } from "@solidjs/start/server";
 import { getDb, schema } from "~/db";
 import { eq, and } from "drizzle-orm";
+import { withCollectionCacheRefresh } from "~/lib/collection-cache";
 
 /**
  * PUT /api/collections/[id]/reorder - Reorder photos in a collection
@@ -39,7 +40,7 @@ export async function PUT(event: APIEvent) {
       ),
   );
 
-  await Promise.all(updates);
+  await withCollectionCacheRefresh([collectionId], () => Promise.all(updates));
 
   return json({ success: true, count: photoIds.length });
 }

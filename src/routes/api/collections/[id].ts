@@ -2,7 +2,10 @@ import { json } from "@solidjs/router";
 import type { APIEvent } from "@solidjs/start/server";
 import { getDb, schema } from "~/db";
 import { eq, and } from "drizzle-orm";
-import { readCollectionCache } from "~/lib/collection-cache";
+import {
+  readCollectionCache,
+  withCollectionCacheRefresh,
+} from "~/lib/collection-cache";
 
 /**
  * GET /api/collections/[id] - Get a single collection with its photos
@@ -85,16 +88,18 @@ export async function PUT(event: APIEvent) {
 
   const db = getDb();
 
-  const [updated] = await db
-    .update(schema.collections)
-    .set({
-      name: name || undefined,
-      description: description,
-      isPrivate: typeof isPrivate === "boolean" ? isPrivate : undefined,
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.collections.id, id))
-    .returning();
+  const [updated] = await withCollectionCacheRefresh([id], () =>
+    db
+      .update(schema.collections)
+      .set({
+        name: name || undefined,
+        description: description,
+        isPrivate: typeof isPrivate === "boolean" ? isPrivate : undefined,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.collections.id, id))
+      .returning(),
+  );
 
   if (!updated) {
     return json({ error: "Collection not found" }, { status: 404 });
@@ -119,10 +124,12 @@ export async function DELETE(event: APIEvent) {
   const id = event.params.id;
   const db = getDb();
 
-  const [deleted] = await db
-    .delete(schema.collections)
-    .where(eq(schema.collections.id, id))
-    .returning();
+  const [deleted] = await withCollectionCacheRefresh([id], () =>
+    db
+      .delete(schema.collections)
+      .where(eq(schema.collections.id, id))
+      .returning(),
+  );
 
   if (!deleted) {
     return json({ error: "Collection not found" }, { status: 404 });

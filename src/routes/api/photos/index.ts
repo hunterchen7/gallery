@@ -2,6 +2,7 @@ import { json } from "@solidjs/router";
 import type { APIEvent } from "@solidjs/start/server";
 import { getDb, schema } from "~/db";
 import { eq } from "drizzle-orm";
+import { withCollectionCacheRefresh } from "~/lib/collection-cache";
 
 /**
  * GET /api/photos - Get all photos
@@ -96,62 +97,64 @@ export async function POST(event: APIEvent) {
       .onConflictDoNothing();
   }
 
-  let existingPhoto = await db.query.photos.findFirst({
-    where: eq(schema.photos.contentHash, contentHash),
-  });
-
-  if (existingPhoto) {
-    if (
-      hasDimensions &&
-      (existingPhoto.width === null || existingPhoto.height === null)
-    ) {
-      [existingPhoto] = await db
-        .update(schema.photos)
-        .set(dimensions)
-        .where(eq(schema.photos.id, existingPhoto.id))
-        .returning();
-    }
-    await associateWithCollections(existingPhoto.id);
-    return json({ ...existingPhoto, duplicate: true });
-  }
-
-  let photo;
-  let wasDuplicate = false;
-  try {
-    [photo] = await db
-      .insert(schema.photos)
-      .values({
-        url,
-        thumbnail,
-        contentHash,
-        ...dimensions,
-        date: new Date(date),
-      })
-      .returning();
-  } catch (error) {
-    // Concurrent uploads of the same content can race on the unique hash.
-    photo = await db.query.photos.findFirst({
+  return withCollectionCacheRefresh(collectionIds as string[], async () => {
+    let existingPhoto = await db.query.photos.findFirst({
       where: eq(schema.photos.contentHash, contentHash),
     });
-    if (!photo) throw error;
-    wasDuplicate = true;
 
-    if (
-      hasDimensions &&
-      (photo.width === null || photo.height === null)
-    ) {
-      [photo] = await db
-        .update(schema.photos)
-        .set(dimensions)
-        .where(eq(schema.photos.id, photo.id))
-        .returning();
+    if (existingPhoto) {
+      if (
+        hasDimensions &&
+        (existingPhoto.width === null || existingPhoto.height === null)
+      ) {
+        [existingPhoto] = await db
+          .update(schema.photos)
+          .set(dimensions)
+          .where(eq(schema.photos.id, existingPhoto.id))
+          .returning();
+      }
+      await associateWithCollections(existingPhoto.id);
+      return json({ ...existingPhoto, duplicate: true });
     }
-  }
 
-  await associateWithCollections(photo.id);
+    let photo;
+    let wasDuplicate = false;
+    try {
+      [photo] = await db
+        .insert(schema.photos)
+        .values({
+          url,
+          thumbnail,
+          contentHash,
+          ...dimensions,
+          date: new Date(date),
+        })
+        .returning();
+    } catch (error) {
+      // Concurrent uploads of the same content can race on the unique hash.
+      photo = await db.query.photos.findFirst({
+        where: eq(schema.photos.contentHash, contentHash),
+      });
+      if (!photo) throw error;
+      wasDuplicate = true;
 
-  return json(
-    wasDuplicate ? { ...photo, duplicate: true } : photo,
-    { status: wasDuplicate ? 200 : 201 },
-  );
+      if (
+        hasDimensions &&
+        (photo.width === null || photo.height === null)
+      ) {
+        [photo] = await db
+          .update(schema.photos)
+          .set(dimensions)
+          .where(eq(schema.photos.id, photo.id))
+          .returning();
+      }
+    }
+
+    await associateWithCollections(photo.id);
+
+    return json(
+      wasDuplicate ? { ...photo, duplicate: true } : photo,
+      { status: wasDuplicate ? 200 : 201 },
+    );
+  });
 }

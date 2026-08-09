@@ -78,7 +78,7 @@ export async function readCollectionCache(
  */
 export async function invalidateCollectionCache(collectionId: string) {
   const stub = getStub(collectionId);
-  if (!stub) return false;
+  if (!stub) return null;
 
   const response = await stub.fetch(collectionUrl(collectionId), {
     method: "DELETE",
@@ -86,20 +86,28 @@ export async function invalidateCollectionCache(collectionId: string) {
   if (!response.ok) {
     throw new Error(`Collection cache invalidation failed (${response.status})`);
   }
-  return true;
+  const body = (await response.json()) as { token?: string };
+  if (!body.token) {
+    throw new Error("Collection cache invalidation returned no mutation token");
+  }
+  return body.token;
 }
 
 /**
- * Rebuilds a dirty snapshot after a successful Neon mutation. A failed refresh
- * is safe: the DO stays dirty and bypasses its snapshot until a later refresh.
+ * Completes one mutation and lets the DO rebuild once all overlapping writes
+ * finish. If rebuilding fails, the old snapshot remains absent.
  */
-export async function refreshCollectionCache(collectionId: string) {
+export async function refreshCollectionCache(
+  collectionId: string,
+  mutationToken: string,
+) {
   const stub = getStub(collectionId);
   if (!stub) return false;
 
   try {
     const response = await stub.fetch(collectionUrl(collectionId), {
       method: "PUT",
+      headers: { "X-Cache-Mutation-Token": mutationToken },
     });
     if (!response.ok) {
       console.error("Collection cache refresh failed:", response.status);
@@ -109,5 +117,39 @@ export async function refreshCollectionCache(collectionId: string) {
   } catch (error) {
     console.error("Collection cache refresh failed:", error);
     return false;
+  }
+}
+
+export async function withCollectionCacheRefresh<T>(
+  collectionIds: Iterable<string>,
+  mutation: () => Promise<T>,
+): Promise<T> {
+  const uniqueIds = [...new Set(collectionIds)].filter(Boolean);
+  const invalidated = new Map<string, string>();
+
+  try {
+    for (const collectionId of uniqueIds) {
+      const token = await invalidateCollectionCache(collectionId);
+      if (token) {
+        invalidated.set(collectionId, token);
+      }
+    }
+  } catch (error) {
+    await Promise.all(
+      [...invalidated].map(([id, token]) =>
+        refreshCollectionCache(id, token),
+      ),
+    );
+    throw error;
+  }
+
+  try {
+    return await mutation();
+  } finally {
+    await Promise.all(
+      [...invalidated].map(([id, token]) =>
+        refreshCollectionCache(id, token),
+      ),
+    );
   }
 }

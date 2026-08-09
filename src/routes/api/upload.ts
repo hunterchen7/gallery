@@ -3,6 +3,7 @@ import type { APIEvent } from "@solidjs/start/server";
 import { getDb, schema } from "~/db";
 import { generateHashUploadPlan, getObjectContentHash } from "~/lib/r2";
 import { and, eq, isNull } from "drizzle-orm";
+import { withCollectionCacheRefresh } from "~/lib/collection-cache";
 
 /**
  * POST /api/upload - Generate presigned URLs for file upload
@@ -66,11 +67,19 @@ export async function POST(event: APIEvent) {
         try {
           const legacyHash = await getObjectContentHash(legacyPhoto.url);
           if (legacyHash === contentHash) {
-            const [updatedPhoto] = await db
-              .update(schema.photos)
-              .set({ contentHash })
-              .where(eq(schema.photos.id, legacyPhoto.id))
-              .returning();
+            const currentCollections = await db
+              .select({ collectionId: schema.photoCollections.collectionId })
+              .from(schema.photoCollections)
+              .where(eq(schema.photoCollections.photoId, legacyPhoto.id));
+            const [updatedPhoto] = await withCollectionCacheRefresh(
+              currentCollections.map(({ collectionId }) => collectionId),
+              () =>
+                db
+                  .update(schema.photos)
+                  .set({ contentHash })
+                  .where(eq(schema.photos.id, legacyPhoto.id))
+                  .returning(),
+            );
             return json({ duplicate: true, photo: updatedPhoto });
           }
         } catch (error) {

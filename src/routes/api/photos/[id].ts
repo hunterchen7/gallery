@@ -2,6 +2,7 @@ import { json } from "@solidjs/router";
 import type { APIEvent } from "@solidjs/start/server";
 import { getDb, schema } from "~/db";
 import { eq } from "drizzle-orm";
+import { withCollectionCacheRefresh } from "~/lib/collection-cache";
 
 /**
  * GET /api/photos/[id] - Get a single photo with its collections
@@ -57,21 +58,31 @@ export async function PUT(event: APIEvent) {
   }
 
   const db = getDb();
-
-  // Delete existing associations
-  await db
-    .delete(schema.photoCollections)
+  const currentCollections = await db
+    .select({ collectionId: schema.photoCollections.collectionId })
+    .from(schema.photoCollections)
     .where(eq(schema.photoCollections.photoId, id));
+  const affectedCollectionIds = [
+    ...currentCollections.map(({ collectionId }) => collectionId),
+    ...(collectionIds as string[]),
+  ];
 
-  // Create new associations
-  if (collectionIds.length > 0) {
-    await db.insert(schema.photoCollections).values(
-      collectionIds.map((collectionId: string) => ({
-        photoId: id,
-        collectionId,
-      })),
-    );
-  }
+  await withCollectionCacheRefresh(affectedCollectionIds, async () => {
+    // Delete existing associations
+    await db
+      .delete(schema.photoCollections)
+      .where(eq(schema.photoCollections.photoId, id));
+
+    // Create new associations
+    if (collectionIds.length > 0) {
+      await db.insert(schema.photoCollections).values(
+        collectionIds.map((collectionId: string) => ({
+          photoId: id,
+          collectionId,
+        })),
+      );
+    }
+  });
 
   return json({ success: true });
 }
@@ -91,11 +102,19 @@ export async function DELETE(event: APIEvent) {
 
   const id = event.params.id;
   const db = getDb();
+  const currentCollections = await db
+    .select({ collectionId: schema.photoCollections.collectionId })
+    .from(schema.photoCollections)
+    .where(eq(schema.photoCollections.photoId, id));
 
-  const [deleted] = await db
-    .delete(schema.photos)
-    .where(eq(schema.photos.id, id))
-    .returning();
+  const [deleted] = await withCollectionCacheRefresh(
+    currentCollections.map(({ collectionId }) => collectionId),
+    () =>
+      db
+        .delete(schema.photos)
+        .where(eq(schema.photos.id, id))
+        .returning(),
+  );
 
   if (!deleted) {
     return json({ error: "Photo not found" }, { status: 404 });

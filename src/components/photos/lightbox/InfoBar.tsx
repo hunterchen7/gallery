@@ -24,12 +24,25 @@ export function InfoBar({
   const [showCopiedPopover, setShowCopiedPopover] = createSignal(false);
   const [hoveredButton, setHoveredButton] = createSignal<string | null>(null);
 
-  const copyImageLink = async () => {
+  const shareImageLink = async () => {
     const currentUrl = new URL(window.location.href);
     currentUrl.searchParams.set("image", photo().url);
+    const url = currentUrl.toString();
+
+    // Phones get the native share sheet; elsewhere copy the link.
+    if (isMobile() && navigator.share) {
+      try {
+        await navigator.share({ url });
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === "AbortError")) {
+          console.error("Failed to share: ", err);
+        }
+      }
+      return;
+    }
 
     try {
-      await navigator.clipboard.writeText(currentUrl.toString());
+      await navigator.clipboard.writeText(url);
       setShowCopiedPopover(true);
 
       // Hide popover after 2 seconds
@@ -62,12 +75,23 @@ export function InfoBar({
     onClick: () => void;
     buttonId: string;
   }) => (
-    <div
-      class="relative"
-      onMouseEnter={() => setHoveredButton(props.buttonId)}
-      onMouseLeave={() => setHoveredButton(null)}
-    >
-      <div onClick={props.onClick}>{props.children}</div>
+    <div class="relative">
+      <button
+        type="button"
+        aria-label={props.label}
+        // Touch taps fire pointerenter but rarely pointerleave, which left
+        // tooltips stuck open; only mice get them.
+        onPointerEnter={(e) => {
+          if (e.pointerType === "mouse") setHoveredButton(props.buttonId);
+        }}
+        onPointerLeave={() => setHoveredButton(null)}
+        onClick={props.onClick}
+        // 40px touch target for fingers (including landscape phones and
+        // tablets); compact for mice.
+        class="flex items-center justify-center p-0.5 pointer-coarse:p-3"
+      >
+        {props.children}
+      </button>
       {hoveredButton() === props.buttonId && (
         <div class="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-10">
           {props.label}
@@ -88,7 +112,7 @@ export function InfoBar({
           {exif().focalLength && <span> {exif().focalLength} </span>}
         </div>
       </div>
-      <div class="flex justify-center mt-1 sm:mt-0 gap-1 relative select-none">
+      <div class="flex justify-center mt-1 sm:mt-0 gap-1 pointer-coarse:mt-0 pointer-coarse:gap-0 relative select-none">
         {!isMobile() &&
           (!isZoomMode() ? (
             <ButtonWithPopover
@@ -117,7 +141,7 @@ export function InfoBar({
         <ButtonWithPopover
           label="Share image"
           buttonId="share"
-          onClick={copyImageLink}
+          onClick={shareImageLink}
         >
           <Share class="inline h-4 w-4 cursor-pointer hover:text-purple-400" />
           {showCopiedPopover() && (

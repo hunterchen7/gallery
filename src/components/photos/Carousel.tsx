@@ -425,6 +425,7 @@ export function Carousel(props: CarouselProps) {
         <DrawerContent
           photo={currentPhoto}
           exif={() => imageExifs()[currentPhoto().url] || {}}
+          onClose={() => setDrawerOpen(false)}
         />
       </aside>
     </div>

@@ -1,4 +1,11 @@
-import { createSignal, createEffect, onCleanup, JSX, For } from "solid-js";
+import {
+  createSignal,
+  createEffect,
+  onCleanup,
+  onMount,
+  JSX,
+  For,
+} from "solid-js";
 import { useSearchParams } from "@solidjs/router";
 import { type GalleryPhoto, S3_PREFIX } from "~/types/photo";
 import { type ExifData } from "~/types/exif";
@@ -13,16 +20,36 @@ export interface CarouselProps {
   onClose: () => void;
 }
 
+// Movement before a touch is treated as a swipe or a vertical gesture.
+const AXIS_LOCK_DISTANCE = 10;
+// Only the last stretch of a swipe decides its velocity, so a slow drag that
+// ends in a flick still counts as a flick.
+const VELOCITY_WINDOW_MS = 100;
+// Release speed (px/ms) below which a swipe is a drag rather than a flick.
+const FLICK_VELOCITY = 0.4;
+
+interface SwipeGesture {
+  startX: number;
+  startY: number;
+  // Slide offset when the finger landed; non-zero when catching a slide that
+  // was still animating.
+  baseOffset: number;
+  axis: "x" | "y" | undefined;
+  samples: Array<{ time: number; x: number }>;
+}
+
 export function Carousel(props: CarouselProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [currentIndex, setCurrentIndex] = createSignal(props.initialIndex ?? 0);
   const [showNavigation, setShowNavigation] = createSignal(false);
-  const [touchStartX, setTouchStartX] = createSignal(0);
-  const [touchStartY, setTouchStartY] = createSignal(0);
-  const [touchStartTime, setTouchStartTime] = createSignal(0);
   const [dragOffset, setDragOffset] = createSignal(0);
   const [isDragging, setIsDragging] = createSignal(false);
-  const [isTransitioning, setIsTransitioning] = createSignal(false);
+  let rootRef: HTMLDivElement | undefined;
+  let drawerRef: HTMLElement | undefined;
+  let gesture: SwipeGesture | undefined;
+  // Set once a second finger lands; the gesture stays dead until every finger
+  // lifts so the remaining finger can't turn a pinch into a swipe.
+  let multiTouch = false;
   const [imageExifs, setImageExifs] = createSignal<Record<string, ExifData>>(
     {},
   );
@@ -202,20 +229,16 @@ export function Carousel(props: CarouselProps) {
     });
   });
 
+  // No transition lock: CSS transitions retarget from wherever the slide
+  // currently is, so rapid navigation stays smooth.
   const goToPrevious = () => {
-    if (isTransitioning() || currentIndex() === 0) return;
-    const newIndex = currentIndex() - 1;
-    setIsTransitioning(true);
-    setCurrentIndex(newIndex);
-    setTimeout(() => setIsTransitioning(false), 300);
+    if (currentIndex() > 0) setCurrentIndex(currentIndex() - 1);
   };
 
   const goToNext = () => {
-    if (isTransitioning() || currentIndex() === props.photos.length - 1) return;
-    const newIndex = currentIndex() + 1;
-    setIsTransitioning(true);
-    setCurrentIndex(newIndex);
-    setTimeout(() => setIsTransitioning(false), 300);
+    if (currentIndex() < props.photos.length - 1) {
+      setCurrentIndex(currentIndex() + 1);
+    }
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -247,80 +270,151 @@ export function Carousel(props: CarouselProps) {
     setShowNavigation(x <= proximity || x >= screenWidth - proximity);
   };
 
-  const handleTouchStart = (e: TouchEvent) => {
-    // Only track single-finger touches to avoid interfering with pinch-zoom
-    if (e.touches.length === 1) {
-      const touch = e.touches[0];
-      setTouchStartX(touch.clientX);
-      setTouchStartY(touch.clientY);
-      setTouchStartTime(Date.now());
-      setIsDragging(true); // Start dragging
-    }
-  };
-
-  const handleTouchMove = (e: TouchEvent) => {
-    if (!isDragging() || touchStartX() === 0) return;
-
-    const touch = e.touches[0];
-    let deltaX = touch.clientX - touchStartX();
-    const deltaY = touch.clientY - touchStartY();
-
-    // Only allow horizontal dragging
-    if (Math.abs(deltaX) > Math.abs(deltaY)) {
-      e.preventDefault(); // Prevent vertical scroll
-
-      // Add resistance when dragging past the boundaries
-      if (
-        (currentIndex() === 0 && deltaX > 0) ||
-        (currentIndex() === props.photos.length - 1 && deltaX < 0)
-      ) {
-        deltaX /= 2; // Dampen the drag
-      }
-
-      // Clamp the drag offset to one screen width
-      const screenWidth = window.innerWidth;
-      const clampedDeltaX = Math.max(
-        -screenWidth,
-        Math.min(deltaX, screenWidth),
-      );
-
-      setDragOffset(clampedDeltaX);
-    }
-  };
-
-  const handleTouchEnd = (e: TouchEvent) => {
-    if (!isDragging()) return;
-    setIsDragging(false);
-
-    const touchDuration = Date.now() - touchStartTime();
-    const velocity = Math.abs(dragOffset()) / touchDuration;
-
-    const screenWidth = window.innerWidth;
-    // Dynamic threshold: faster swipes require less distance
-    const swipeThreshold = Math.max(
-      50, // Minimum threshold
-      screenWidth / 2 - velocity * 100, // Adjust sensitivity by velocity
+  // Where the current slide is on screen right now, including any transition
+  // still in flight.
+  const visibleSlideOffset = () => {
+    const slide = rootRef?.querySelector<HTMLElement>(
+      `[data-slide-index="${currentIndex()}"]`,
     );
+    if (!slide) return 0;
+    return new DOMMatrixReadOnly(getComputedStyle(slide).transform).m41;
+  };
 
-    if (Math.abs(dragOffset()) > swipeThreshold) {
-      if (dragOffset() > 0 && currentIndex() > 0) {
-        goToPrevious();
-      } else if (dragOffset() < 0 && currentIndex() < props.photos.length - 1) {
-        goToNext();
-      }
-    }
+  const isPinchZoomed = () => (window.visualViewport?.scale ?? 1) > 1.01;
 
-    // Snap back to the nearest photo
+  const endGesture = () => {
+    gesture = undefined;
+    setIsDragging(false);
     setDragOffset(0);
   };
 
-  createEffect(() => {
+  const handleTouchStart = (e: TouchEvent) => {
+    if (e.touches.length > 1) {
+      multiTouch = true;
+      if (gesture) endGesture();
+      return;
+    }
+    if (
+      multiTouch ||
+      drawerOpen() ||
+      // While zoomed in, one finger pans the zoomed view instead of swiping.
+      isPinchZoomed() ||
+      (e.target instanceof Node && drawerRef?.contains(e.target))
+    ) {
+      return;
+    }
+
+    const touch = e.touches[0];
+    const baseOffset = visibleSlideOffset();
+    gesture = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      baseOffset,
+      axis: undefined,
+      samples: [{ time: e.timeStamp, x: touch.clientX }],
+    };
+    // Freeze a slide that was mid-transition where it is instead of letting it
+    // jump to its destination.
+    setDragOffset(baseOffset);
+    setIsDragging(true);
+  };
+
+  const handleTouchMove = (e: TouchEvent) => {
+    if (!gesture || e.touches.length !== 1) return;
+    // Nothing in the carousel scrolls, so keep the page underneath from
+    // scrolling or pull-to-refreshing during any one-finger gesture.
+    if (e.cancelable) e.preventDefault();
+
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - gesture.startX;
+    const deltaY = touch.clientY - gesture.startY;
+
+    if (!gesture.axis) {
+      if (Math.hypot(deltaX, deltaY) < AXIS_LOCK_DISTANCE) return;
+      gesture.axis = Math.abs(deltaX) > Math.abs(deltaY) ? "x" : "y";
+    }
+    // A gesture that started vertical never becomes a swipe, and a swipe
+    // keeps following the finger even if it drifts vertically.
+    if (gesture.axis === "y") return;
+
+    gesture.samples.push({ time: e.timeStamp, x: touch.clientX });
+    while (
+      gesture.samples.length > 2 &&
+      e.timeStamp - gesture.samples[0].time > VELOCITY_WINDOW_MS
+    ) {
+      gesture.samples.shift();
+    }
+
+    let offset = gesture.baseOffset + deltaX;
+    const atStart = currentIndex() === 0 && offset > 0;
+    const atEnd = currentIndex() === props.photos.length - 1 && offset < 0;
+    if (atStart || atEnd) offset /= 2;
+
+    const screenWidth = window.innerWidth;
+    setDragOffset(Math.max(-screenWidth, Math.min(offset, screenWidth)));
+  };
+
+  const handleTouchEnd = (e: TouchEvent) => {
+    if (e.touches.length === 0) multiTouch = false;
+    const finished = gesture;
+    if (!finished) return;
+
+    if (finished.axis !== "x") {
+      // A tap or vertical gesture leaves any caught slide to finish settling
+      // on the current photo.
+      endGesture();
+      return;
+    }
+
+    const first = finished.samples[0];
+    const last = finished.samples[finished.samples.length - 1];
+    const elapsed = last.time - first.time;
+    const velocity = elapsed > 0 ? (last.x - first.x) / elapsed : 0;
+
+    // A flick moves one photo in its direction, even when it caught a slide
+    // that was still settling. Flicking back against the drag isn't a flick.
+    const travel = last.x - finished.startX;
+    const isFlick =
+      Math.abs(velocity) >= FLICK_VELOCITY &&
+      Math.sign(velocity) === Math.sign(travel);
+    // Otherwise settle on whichever photo shows more.
+    const pages = isFlick
+      ? Math.sign(velocity)
+      : Math.max(-1, Math.min(1, Math.round(dragOffset() / window.innerWidth)));
+
+    endGesture();
+    if (pages > 0) goToPrevious();
+    else if (pages < 0) goToNext();
+  };
+
+  const handleTouchCancel = (e: TouchEvent) => {
+    if (e.touches.length === 0) multiTouch = false;
+    if (gesture) endGesture();
+  };
+
+  onMount(() => {
+    const root = rootRef!;
+    // Native listeners: Solid delegates touch events to the document, where
+    // browsers force them passive and preventDefault is ignored.
+    root.addEventListener("touchstart", handleTouchStart, { passive: true });
+    root.addEventListener("touchmove", handleTouchMove, { passive: false });
+    root.addEventListener("touchend", handleTouchEnd);
+    root.addEventListener("touchcancel", handleTouchCancel);
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("mousemove", handleMouseMove);
 
+    const html = document.documentElement;
+    const previousOverflow = html.style.overflow;
+    html.style.overflow = "hidden";
+
     onCleanup(() => {
+      root.removeEventListener("touchstart", handleTouchStart);
+      root.removeEventListener("touchmove", handleTouchMove);
+      root.removeEventListener("touchend", handleTouchEnd);
+      root.removeEventListener("touchcancel", handleTouchCancel);
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("mousemove", handleMouseMove);
+      html.style.overflow = previousOverflow;
     });
   });
 
@@ -355,18 +449,19 @@ export function Carousel(props: CarouselProps) {
 
   return (
     <div
-      class="fixed inset-0 z-50 bg-black/95 overflow-hidden"
+      ref={rootRef}
+      class="fixed inset-0 z-50 bg-black/95 overflow-hidden overscroll-none"
       onClick={props.onClose}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
       onMouseLeave={() => setShowNavigation(false)}
     >
       {/* Carousel container */}
       <div class="relative w-full h-full overflow-hidden">
         <For each={props.photos}>
           {(photo, index) => (
-            <div style={getCarouselItemStyle(index())}>
+            <div
+              data-slide-index={index()}
+              style={getCarouselItemStyle(index())}
+            >
               <Lightbox
                 photo={() => photo}
                 exif={() => imageExifs()[photo.url] || {}}
@@ -416,6 +511,7 @@ export function Carousel(props: CarouselProps) {
         <div class="absolute inset-0 bg-black/80" />
       </div>
       <aside
+        ref={drawerRef}
         class={`overflow-y-none fixed right-0 top-0 h-full w-72 md:w-96 bg-gray-900/95 shadow-lg z-[100] flex flex-col p-6 transition-transform duration-300 ease-in-out ${
           drawerOpen() ? "translate-x-0" : "translate-x-full"
         }`}

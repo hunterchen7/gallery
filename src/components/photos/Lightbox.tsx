@@ -28,14 +28,38 @@ export function Lightbox({
   const [imgHeight, setImgHeight] = createSignal<number>(0);
   const [isMobile, setIsMobile] = createSignal(false);
   const [imageLoaded, setImageLoaded] = createSignal(false);
-  const [thumbSize, setThumbSize] = createSignal<{ w: number; h: number } | null>(null);
+  const [aspectRatio, setAspectRatio] = createSignal<number>();
+  const [infoBarHeight, setInfoBarHeight] = createSignal(0);
+  let infoBarRef: HTMLDivElement | undefined;
   const [loadProgress, setLoadProgress] = createSignal<number | null>(null);
   const [loadedBytes, setLoadedBytes] = createSignal(0);
   const [totalBytes, setTotalBytes] = createSignal(0);
 
   onMount(() => {
     setIsMobile(window.matchMedia("(pointer: coarse)").matches);
+
+    // The info bar wraps to more lines as the photo narrows, so track its
+    // real height rather than assuming one.
+    const measureInfoBar = () => setInfoBarHeight(infoBarRef?.offsetHeight ?? 0);
+    measureInfoBar();
+    const infoBarObserver = new ResizeObserver(measureInfoBar);
+    if (infoBarRef) infoBarObserver.observe(infoBarRef);
+    window.addEventListener("resize", measureInfoBar);
+    onCleanup(() => {
+      infoBarObserver.disconnect();
+      window.removeEventListener("resize", measureInfoBar);
+    });
   });
+
+  // Largest size that fits the photo and its info bar inside 95% of the
+  // viewport. Left to CSS so rotation and mobile browser chrome showing or
+  // hiding re-fit without waiting on resize events, which can fire before
+  // the new dimensions settle.
+  const fittedWidth = () => {
+    const ar = aspectRatio();
+    if (!ar) return undefined;
+    return `min(95vw, calc((95dvh - ${infoBarHeight()}px) * ${ar}))`;
+  };
 
   const photoUrl = `${S3_PREFIX}${photo().url}`;
 
@@ -135,7 +159,12 @@ export function Lightbox({
         onClick={(e) => e.stopPropagation()}
       >
         <div
-          class="relative min-w-32 min-h-32 md:min-w-96 md:min-h-96"
+          // Placeholder size until the thumbnail is fitted; afterwards these
+          // minimums would overflow short landscape screens.
+          class="relative"
+          classList={{
+            "min-w-32 min-h-32 md:min-w-96 md:min-h-96": !fittedWidth(),
+          }}
           onMouseMove={(e) => {
             // Magnifier behavior (when enabled) tracks pointer over the image
             if (!isZoomMode()) return;
@@ -152,21 +181,16 @@ export function Lightbox({
             src={`${S3_PREFIX}${photo().thumbnail}`}
             alt="thumbnail"
             class="rounded-lg shadow-lg select-none brightness-85 blur-xs"
-            onLoad={(e) => {
-              const ar = e.currentTarget.naturalWidth / e.currentTarget.naturalHeight;
-              const maxW = window.innerWidth * 0.95;
-              const maxH = window.innerHeight * 0.95;
-              let w = maxW;
-              let h = w / ar;
-              if (h > maxH) {
-                h = maxH;
-                w = h * ar;
-              }
-              setThumbSize({ w, h });
-            }}
+            onLoad={(e) =>
+              setAspectRatio(
+                e.currentTarget.naturalWidth / e.currentTarget.naturalHeight,
+              )
+            }
             style={{
               display: "block",
-              ...(thumbSize() ? { width: `${thumbSize()!.w}px`, height: `${thumbSize()!.h}px` } : { "max-width": "95vw", "max-height": "95vh" }),
+              ...(fittedWidth()
+                ? { width: fittedWidth(), "aspect-ratio": `${aspectRatio()}` }
+                : { "max-width": "95vw", "max-height": "95vh" }),
             }}
           />
           {shouldLoad() && (
@@ -230,14 +254,16 @@ export function Lightbox({
             <div style={magnifierStyle()} />
           )}
         </div>
-        <InfoBar
-          photo={photo}
-          exif={exif}
-          isMobile={isMobile}
-          isZoomMode={isZoomMode}
-          setIsZoomMode={setIsZoomMode}
-          setDrawerOpen={setDrawerOpen}
-        />
+        <div ref={infoBarRef} class="w-full">
+          <InfoBar
+            photo={photo}
+            exif={exif}
+            isMobile={isMobile}
+            isZoomMode={isZoomMode}
+            setIsZoomMode={setIsZoomMode}
+            setDrawerOpen={setDrawerOpen}
+          />
+        </div>
       </div>
     </div>
   );

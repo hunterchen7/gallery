@@ -1,4 +1,12 @@
-import { Camera, Aperture, Image, Telescope, Clock, File } from "lucide-solid";
+import {
+  Camera,
+  Aperture,
+  Image,
+  Telescope,
+  Clock,
+  File,
+  X,
+} from "lucide-solid";
 import { formatDate } from "~/utils/date";
 import { type GalleryPhoto, S3_PREFIX } from "~/types/photo";
 import { type ExifData } from "~/types/exif";
@@ -7,12 +15,25 @@ import { Show } from "solid-js";
 interface DrawerContentProps {
   photo: () => GalleryPhoto;
   exif: () => ExifData;
+  onClose: () => void;
 }
 
-export function DrawerContent({ photo, exif }: DrawerContentProps) {
+export function DrawerContent({ photo, exif, onClose }: DrawerContentProps) {
   return (
-    <>
-      <h2 class="text-lg text-violet-200 mb-4">Photo Info</h2>
+    // Scrolls on its own so long lens names or a short landscape screen
+    // don't push content past the drawer.
+    <div class="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+      <div class="mb-4 flex items-center justify-between">
+        <h2 class="text-lg text-violet-200">Photo Info</h2>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close photo info"
+          class="-mr-2 flex h-10 w-10 items-center justify-center rounded-full text-violet-200 hover:bg-white/10"
+        >
+          <X class="h-5 w-5" />
+        </button>
+      </div>
       <div class="text-xs md:text-sm text-violet-200 space-y-2 text-left">
         <Show when={photo().url}>
           {(url) => (
@@ -88,6 +109,6 @@ export function DrawerContent({ photo, exif }: DrawerContentProps) {
         </Show>
       </div>
       <div class="mt-auto text-sm text-gray-500 mb-4">2025 - Hunter Chen</div>
-    </>
+    </div>
   );
 }

@@ -6,6 +6,7 @@ import {
   JSX,
   For,
   Show,
+  on,
 } from "solid-js";
 import { useSearchParams } from "@solidjs/router";
 import { type GalleryPhoto, S3_PREFIX } from "~/types/photo";
@@ -59,13 +60,22 @@ export function Carousel(props: CarouselProps) {
   // Shared drawer state
   const [drawerOpen, setDrawerOpen] = createSignal(false);
 
-  // Update search params when current index changes
-  createEffect(() => {
-    const currentPhoto = props.photos[currentIndex()];
-    if (currentPhoto) {
-      setSearchParams({ image: currentPhoto.url });
-    }
-  });
+  // Keep the URL pointing at the current photo. Replace rather than push so
+  // swiping doesn't fill history with one entry per photo. Deferred because
+  // whoever opened the carousel already put the first photo in the URL, and
+  // a same-tick replace would swallow the opener's history entry.
+  createEffect(
+    on(
+      currentIndex,
+      (index) => {
+        const currentPhoto = props.photos[index];
+        if (currentPhoto) {
+          setSearchParams({ image: currentPhoto.url }, { replace: true });
+        }
+      },
+      { defer: true },
+    ),
+  );
 
   // Helper function to fetch EXIF data for a single photo
   const fetchPhotoExifData = async (

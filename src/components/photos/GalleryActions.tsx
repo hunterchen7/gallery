@@ -36,10 +36,13 @@ export function GalleryActions(props: GalleryActionsProps) {
     }
   });
 
+  // Rows centre with auto margins rather than justify-center: when a row
+  // overflows, justify-center pushes its start off the left edge where it
+  // can't be scrolled to, while auto margins collapse to zero.
   return (
     <section class="relative mx-auto h-10 max-w-5xl text-left">
       <div
-        class={`absolute inset-0 flex items-center justify-center gap-2 overflow-x-auto whitespace-nowrap px-1 transition-opacity duration-150 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+        class={`absolute inset-0 flex items-center gap-2 overflow-x-auto [&>:first-child]:ml-auto [&>:last-child]:mr-auto whitespace-nowrap px-1 transition-opacity duration-150 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
           props.selectedCount === 0
             ? "pointer-events-auto opacity-100"
             : "pointer-events-none opacity-0"
@@ -68,7 +71,7 @@ export function GalleryActions(props: GalleryActionsProps) {
       </div>
 
       <div
-        class={`absolute inset-0 flex items-center justify-center gap-2 overflow-x-auto whitespace-nowrap px-1 transition-opacity duration-150 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+        class={`absolute inset-0 flex items-center gap-2 overflow-x-auto [&>:first-child]:ml-auto [&>:last-child]:mr-auto whitespace-nowrap px-1 transition-opacity duration-150 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
           props.selectedCount > 0
             ? "pointer-events-auto opacity-100"
             : "pointer-events-none opacity-0"

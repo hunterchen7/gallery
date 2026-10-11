@@ -1,19 +1,31 @@
-import { createSignal, onCleanup, createEffect, onMount, JSX } from "solid-js";
+import {
+  createSignal,
+  createMemo,
+  onCleanup,
+  createEffect,
+  onMount,
+  JSX,
+} from "solid-js";
 import { S3_PREFIX, type GalleryPhoto } from "~/types/photo";
 import { type ExifData } from "~/types/exif";
+import { extractExif } from "~/utils/exif";
 import { InfoBar } from "./lightbox/InfoBar";
 
 const magnifierSize = 500; // px
+// EXIF lives at the start of the file; 64KB covers it for these photos.
+const EXIF_PREFIX_BYTES = 64 * 1024;
 const magnifierZoom = 0.75;
 
 export function Lightbox({
   photo,
   exif,
+  onExif,
   setDrawerOpen,
   shouldLoad = () => true,
 }: {
   photo: () => GalleryPhoto;
   exif: () => ExifData;
+  onExif?: (exif: ExifData) => void;
   setDrawerOpen: (open: boolean) => void;
   shouldLoad?: () => boolean;
 }) {
@@ -39,30 +51,65 @@ export function Lightbox({
 
   const photoUrl = `${S3_PREFIX}${photo().url}`;
 
-  // Track download progress via a parallel fetch that shares the HTTP cache with <img>
+  // The only download of the full image: it drives the progress bar, yields
+  // EXIF from the first bytes, and becomes the <img> source as a blob. A
+  // separate <img src> request can't reuse this one from the HTTP cache: the
+  // photo host varies on Origin, and <img> sends none.
+  const [imageSrc, setImageSrc] = createSignal<string>();
+  // shouldLoad reads the carousel's index, so it re-fires on every swipe even
+  // when its answer is unchanged; only restart the download when it flips.
+  const loading = createMemo(shouldLoad);
   createEffect(() => {
-    if (!shouldLoad()) return;
+    if (!loading()) return;
     setLoadProgress(null);
 
     const controller = new AbortController();
-    fetch(photoUrl, { signal: controller.signal })
-      .then(async (res) => {
+    let objectUrl: string | undefined;
+    void (async () => {
+      try {
+        const res = await fetch(photoUrl, { signal: controller.signal });
+        if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
         const total = Number(res.headers.get("Content-Length") || 0);
-        if (!total || !res.body) return;
         setTotalBytes(total);
         const reader = res.body.getReader();
+        const chunks: Uint8Array[] = [];
         let loaded = 0;
+        let exifRead = false;
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          chunks.push(value);
           loaded += value.byteLength;
           setLoadedBytes(loaded);
-          setLoadProgress(loaded / total);
+          if (total) setLoadProgress(loaded / total);
+          if (!exifRead && loaded >= EXIF_PREFIX_BYTES) {
+            const exif = extractExif(await new Blob(chunks).arrayBuffer(), total);
+            exifRead = Object.keys(exif).length > 0;
+            if (exifRead) onExif?.(exif);
+          }
         }
-      })
-      .catch(() => {});
+        const blob = new Blob(chunks, {
+          type: res.headers.get("Content-Type") || "image/jpeg",
+        });
+        if (!exifRead) {
+          const exif = extractExif(await blob.arrayBuffer(), total || blob.size);
+          if (Object.keys(exif).length > 0) onExif?.(exif);
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setImageSrc(objectUrl);
+      } catch {
+        // Let the browser try the photo directly; it just loses progress and
+        // EXIF.
+        if (!controller.signal.aborted) setImageSrc(photoUrl);
+      }
+    })();
 
-    onCleanup(() => controller.abort());
+    onCleanup(() => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      setImageSrc(undefined);
+      setImageLoaded(false);
+    });
   });
 
   const magnifierStyle = (): JSX.CSSProperties => {
@@ -100,7 +147,7 @@ export function Lightbox({
       border: "2px solid #eee",
       overflow: "hidden",
       "z-index": 10,
-      "background-image": `url(${photoUrl})`,
+      "background-image": `url(${imageSrc() ?? photoUrl})`,
       "background-repeat": "no-repeat",
       "background-size": `${imgWidth() * magnifierZoom}px ${
         imgHeight() * magnifierZoom
@@ -169,10 +216,10 @@ export function Lightbox({
               ...(thumbSize() ? { width: `${thumbSize()!.w}px`, height: `${thumbSize()!.h}px` } : { "max-width": "95vw", "max-height": "95vh" }),
             }}
           />
-          {shouldLoad() && (
+          {shouldLoad() && imageSrc() && (
             <img
               ref={setImgRef}
-              src={photoUrl}
+              src={imageSrc()}
               alt="photo"
               onLoad={(e) => {
                 setImgWidth(e.currentTarget.naturalWidth);

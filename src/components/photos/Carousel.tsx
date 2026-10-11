@@ -9,9 +9,8 @@ import {
   on,
 } from "solid-js";
 import { useSearchParams } from "@solidjs/router";
-import { type GalleryPhoto, S3_PREFIX } from "~/types/photo";
+import { type GalleryPhoto } from "~/types/photo";
 import { type ExifData } from "~/types/exif";
-import { extractExif } from "~/utils/exif";
 import { Lightbox } from "./Lightbox";
 import { NavArrow } from "./lightbox/NavArrow";
 import { DrawerContent } from "./lightbox/DrawerContent";
@@ -76,170 +75,6 @@ export function Carousel(props: CarouselProps) {
       { defer: true },
     ),
   );
-
-  // Helper function to fetch EXIF data for a single photo
-  const fetchPhotoExifData = async (
-    photo: GalleryPhoto,
-    signal: AbortSignal,
-  ): Promise<ExifData> => {
-    const attemptFetch = async (
-      useCache: boolean = true,
-    ): Promise<ExifData> => {
-      const response = await fetch(`${S3_PREFIX}${photo.url}`, {
-        signal,
-        cache: useCache ? "default" : "no-cache",
-      });
-
-      if (!response.body) {
-        throw new Error("ReadableStream not supported");
-      }
-
-      const contentLength = response.headers.get("content-length");
-      const total = contentLength ? parseInt(contentLength, 10) : 0;
-
-      let loaded = 0;
-      let exifExtracted = false;
-      let extractedExif: ExifData = {};
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      const EXIF_CHECK_THRESHOLD = 65536; // 64KB - enough for most EXIF data
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        if (signal.aborted) {
-          throw new Error("Request aborted");
-        }
-
-        chunks.push(value);
-        loaded += value.length;
-
-        // Try to extract EXIF data once we have enough bytes
-        if (!exifExtracted && loaded >= EXIF_CHECK_THRESHOLD) {
-          try {
-            // Create a buffer from chunks received so far
-            const partialBuffer = new Uint8Array(loaded);
-            let offset = 0;
-            for (const chunk of chunks) {
-              partialBuffer.set(chunk, offset);
-              offset += chunk.length;
-            }
-
-            const exif = extractExif(partialBuffer.buffer, total);
-
-            // Only use if we got meaningful EXIF data
-            if (Object.keys(exif).length > 1 || exif.camera) {
-              extractedExif = exif;
-              exifExtracted = true;
-              // Cancel the reader to stop fetching more data
-              await reader.cancel();
-              break;
-            }
-          } catch (err) {}
-        }
-      }
-
-      // Final EXIF extraction if not already done or if we want to update with file size
-      if (!signal.aborted && (!exifExtracted || total > 0)) {
-        const buffer = new Uint8Array(loaded);
-        let offset = 0;
-        for (const chunk of chunks) {
-          buffer.set(chunk, offset);
-          offset += chunk.length;
-        }
-
-        extractedExif = extractExif(buffer.buffer, total);
-      }
-
-      return extractedExif;
-    };
-
-    try {
-      // First attempt with cache
-      return await attemptFetch();
-    } catch (err) {
-      try {
-        // Retry without cache if first attempt fails, evades some CORS issues
-        return await attemptFetch(false);
-      } catch (retryErr) {
-        // Both attempts failed, return empty EXIF
-        return {};
-      }
-    }
-  };
-
-  // Fetch EXIF data for current and adjacent photos
-  createEffect(() => {
-    const currentPhoto = props.photos[currentIndex()];
-    if (!currentPhoto) return;
-
-    const controller = new AbortController();
-    const signal = controller.signal;
-
-    const fetchExifDataForAdjacent = async () => {
-      const photosToFetch: GalleryPhoto[] = [];
-
-      // Only fetch for photos that don't already have EXIF data
-      if (!imageExifs()[currentPhoto.url]) {
-        photosToFetch.push(currentPhoto);
-      }
-
-      // Add previous photo if it exists and doesn't have EXIF data
-      const prevIndex = currentIndex() - 1;
-      if (prevIndex >= 0 && !imageExifs()[props.photos[prevIndex].url]) {
-        photosToFetch.push(props.photos[prevIndex]);
-      }
-
-      // Add next photo if it exists and doesn't have EXIF data
-      const nextIndex = currentIndex() + 1;
-      if (
-        nextIndex < props.photos.length &&
-        !imageExifs()[props.photos[nextIndex].url]
-      ) {
-        photosToFetch.push(props.photos[nextIndex]);
-      }
-
-      // Fetch EXIF data for all photos concurrently
-      const fetchPromises = photosToFetch.map(async (photo) => {
-        try {
-          const exifData = await fetchPhotoExifData(photo, signal);
-          // Only return data if we got meaningful EXIF data
-          if (Object.keys(exifData).length > 0) {
-            return { photo, exifData };
-          }
-          return null; // Return null if no meaningful EXIF data
-        } catch (error) {
-          // If fetch fails, return null to skip setting EXIF data
-          return null;
-        }
-      });
-
-      const results = await Promise.allSettled(fetchPromises);
-
-      // Update state with only successfully fetched EXIF data
-      const exifUpdates: Record<string, ExifData> = {};
-      results.forEach((result) => {
-        if (result.status === "fulfilled" && result.value !== null) {
-          const { photo, exifData } = result.value;
-          exifUpdates[photo.url] = exifData;
-        }
-      });
-
-      if (Object.keys(exifUpdates).length > 0) {
-        setImageExifs((prev) => ({
-          ...prev,
-          ...exifUpdates,
-        }));
-      }
-    };
-
-    fetchExifDataForAdjacent();
-
-    onCleanup(() => {
-      controller.abort();
-    });
-  });
 
   // No transition lock: CSS transitions retarget from wherever the slide
   // currently is, so rapid navigation stays smooth.
@@ -483,6 +318,9 @@ export function Carousel(props: CarouselProps) {
                 <Lightbox
                   photo={() => photo}
                   exif={() => imageExifs()[photo.url] || {}}
+                  onExif={(exif) =>
+                    setImageExifs((prev) => ({ ...prev, [photo.url]: exif }))
+                  }
                   setDrawerOpen={setDrawerOpen}
                   shouldLoad={() => shouldLoadHighRes(index())}
                 />

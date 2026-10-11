@@ -5,6 +5,7 @@ import {
   createSignal,
   For,
   type JSX,
+  on,
   onMount,
   Show,
 } from "solid-js";
@@ -295,18 +296,44 @@ export function Gallery(props: GalleryProps) {
     }
   }
 
-  function updateUrlWithImage(index: number | null) {
-    if (index !== null && photos()[index]) {
-      setSearchParams({ image: photos()[index].url });
+  // Opening a photo pushes one history entry, so Back closes the carousel.
+  // A carousel opened from a shared link has no entry of ours to pop.
+  let pushedCarouselEntry = false;
+
+  function openCarousel(index: number) {
+    setExpandedIndex(index);
+    setSearchParams({ image: photos()[index].url });
+    pushedCarouselEntry = true;
+  }
+
+  function closeCarousel() {
+    if (pushedCarouselEntry) {
+      // The image param disappearing closes the carousel (effect below).
+      history.back();
     } else {
-      setSearchParams({ image: undefined });
+      setExpandedIndex(null);
+      setSearchParams({ image: undefined }, { replace: true });
     }
   }
 
-  function setExpandedIndexWithUrl(index: number | null) {
-    setExpandedIndex(index);
-    updateUrlWithImage(index);
-  }
+  // Follow Back/Forward: the image param leaving closes the carousel, and
+  // coming back (Forward) reopens it on that photo.
+  createEffect(
+    on(
+      () => searchParams.image,
+      (imageParam) => {
+        if (!imageParam) {
+          setExpandedIndex(null);
+        } else if (expandedIndex() === null && pushedCarouselEntry) {
+          const photoIndex = photos().findIndex(
+            (photo) => photo.url === imageParam,
+          );
+          if (photoIndex !== -1) setExpandedIndex(photoIndex);
+        }
+      },
+      { defer: true },
+    ),
+  );
 
   function togglePhoto(photoId: string) {
     const selected = new Set(selectedPhotoIds());
@@ -324,7 +351,7 @@ export function Gallery(props: GalleryProps) {
       return;
     }
     if (selectedPhotoIds().size > 0) togglePhoto(photo.id);
-    else setExpandedIndexWithUrl(index);
+    else openCarousel(index);
   }
 
   function handleSelectAll() {
@@ -1061,7 +1088,7 @@ export function Gallery(props: GalleryProps) {
           <Carousel
             photos={photos()}
             initialIndex={expandedIndex()!}
-            onClose={() => setExpandedIndexWithUrl(null)}
+            onClose={closeCarousel}
           />
         </Show>
       </div>

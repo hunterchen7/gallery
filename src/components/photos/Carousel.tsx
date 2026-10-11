@@ -5,6 +5,7 @@ import {
   onMount,
   JSX,
   For,
+  Show,
 } from "solid-js";
 import { useSearchParams } from "@solidjs/router";
 import { type GalleryPhoto, S3_PREFIX } from "~/types/photo";
@@ -27,6 +28,7 @@ const AXIS_LOCK_DISTANCE = 10;
 const VELOCITY_WINDOW_MS = 100;
 // Release speed (px/ms) below which a swipe is a drag rather than a flick.
 const FLICK_VELOCITY = 0.4;
+const MOUNTED_SLIDE_RADIUS = 2;
 
 interface SwipeGesture {
   startX: number;
@@ -435,7 +437,12 @@ export function Carousel(props: CarouselProps) {
     };
   };
 
-  // change this render both the left and the right
+  // Only slides near the current one exist in the DOM. Two on each side keeps
+  // the next photo's thumbnail ready during rapid swiping without mounting
+  // and restyling the whole collection on every touchmove.
+  const isMounted = (index: number) =>
+    Math.abs(index - currentIndex()) <= MOUNTED_SLIDE_RADIUS;
+
   const shouldLoadHighRes = (index: number): boolean => {
     return (
       index === currentIndex() ||
@@ -458,17 +465,19 @@ export function Carousel(props: CarouselProps) {
       <div class="relative w-full h-full overflow-hidden">
         <For each={props.photos}>
           {(photo, index) => (
-            <div
-              data-slide-index={index()}
-              style={getCarouselItemStyle(index())}
-            >
-              <Lightbox
-                photo={() => photo}
-                exif={() => imageExifs()[photo.url] || {}}
-                setDrawerOpen={setDrawerOpen}
-                shouldLoad={() => shouldLoadHighRes(index())}
-              />
-            </div>
+            <Show when={isMounted(index())}>
+              <div
+                data-slide-index={index()}
+                style={getCarouselItemStyle(index())}
+              >
+                <Lightbox
+                  photo={() => photo}
+                  exif={() => imageExifs()[photo.url] || {}}
+                  setDrawerOpen={setDrawerOpen}
+                  shouldLoad={() => shouldLoadHighRes(index())}
+                />
+              </div>
+            </Show>
           )}
         </For>
       </div>

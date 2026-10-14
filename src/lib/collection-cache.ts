@@ -1,3 +1,4 @@
+import { getRequestEvent } from "solid-js/web";
 import {
   collectionSnapshotKey,
   loadCollectionFromD1,
@@ -9,6 +10,19 @@ import {
   completeSnapshotMutation,
   publishSnapshot,
 } from "~/lib/d1-snapshot-store";
+
+/**
+ * The current request's waitUntil, when the runtime provides one (Cloudflare).
+ * Snapshot rebuilds then run after the response is sent: until they finish,
+ * the snapshot stays dirty and reads fall back to the relational tables, so
+ * nothing stale is served.
+ */
+function requestWaitUntil(): ((promise: Promise<void>) => void) | undefined {
+  const nativeEvent = getRequestEvent()?.nativeEvent as
+    | { waitUntil?: (promise: Promise<void>) => void }
+    | undefined;
+  return nativeEvent?.waitUntil?.bind(nativeEvent);
+}
 
 export async function withCollectionCacheRefresh<T>(
   collectionIds: Iterable<string>,
@@ -76,12 +90,13 @@ export async function withCollectionCacheRefresh<T>(
   }
 
   const refreshPromise = finishSnapshotMutations();
-  if (!options.waitUntil) {
+  const waitUntil = options.waitUntil ?? requestWaitUntil();
+  if (!waitUntil) {
     await refreshPromise;
     return result;
   }
 
-  options.waitUntil(
+  waitUntil(
     refreshPromise.catch((error) => {
       console.error("D1 snapshot refresh failed:", error);
     }),

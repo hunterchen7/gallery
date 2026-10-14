@@ -290,12 +290,6 @@ export function Gallery(props: GalleryProps) {
     void revalidate(getPublicCollectionRoute.keyFor(collectionId));
   }
 
-  function invalidateCollectionList() {
-    if (props.currentCollectionId) {
-      invalidateCollectionPage(props.currentCollectionId);
-    }
-  }
-
   // Opening a photo pushes one history entry, so Back closes the carousel.
   // A carousel opened from a shared link has no entry of ours to pop.
   let pushedCarouselEntry = false;
@@ -758,9 +752,6 @@ export function Gallery(props: GalleryProps) {
       setDisplayDescription(result.description || "");
       setDraftName(result.name);
       setDraftDescription(result.description || "");
-      invalidateCollectionPage(collectionId);
-      invalidateCollectionList();
-      await loadCollections(true);
       return true;
     } catch (error) {
       setDetailsStatus({
@@ -797,7 +788,6 @@ export function Gallery(props: GalleryProps) {
       setOriginalOrder(photoIds);
       setOrderHistory([photoIds]);
       setOrderHistoryIndex(0);
-      invalidateCollectionPage(collectionId);
       setMessage({ type: "success", text: "Photo order saved" });
       return true;
     } catch (error) {
@@ -813,8 +803,16 @@ export function Gallery(props: GalleryProps) {
 
   async function savePendingChanges() {
     if (busy() || savingDetails()) return;
-    if (!(await saveCollectionDetails())) return;
-    if (!(await saveOrder())) return;
+    const collectionId = props.currentCollectionId;
+    const renamed = detailsChanged();
+    const saved = (await saveCollectionDetails()) && (await saveOrder());
+    // Refetch only once everything has saved. Refetching between the two
+    // saves returned the old photo order, which overwrote the local edits
+    // mid-save and made the saved changes look unsaved. After a failure,
+    // keep the local edits so the save can be retried.
+    if (!saved || !collectionId) return;
+    invalidateCollectionPage(collectionId);
+    if (renamed) await loadCollections(true);
   }
 
   async function handleUploadComplete() {

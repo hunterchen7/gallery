@@ -118,9 +118,12 @@ export default function CollectionPage() {
             when={collection()}
             fallback={
               <Show when={notFound()}>
-                <div class="py-8 text-center">
-                  <h2 class="mb-2 text-xl">Collection not found</h2>
-                </div>
+                {/* Sized like the description it replaces: the caption slot
+                    is a fixed h-8 row, and anything taller overlaps the
+                    collections row below it. */}
+                <p class="h-8 truncate py-1.5 text-center text-zinc-400">
+                  collection not found
+                </p>
               </Show>
             }
           >
